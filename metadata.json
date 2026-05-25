@@ -1,0 +1,12 @@
+{
+  "name": "EduSphere SaaS",
+  "description": "Comprehensive, enterprise-grade School Management System with AI-powered accounting, multi-role portals, and real-time tracking.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

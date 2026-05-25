@@ -1,0 +1,344 @@
+{
+  "entities": {
+    "SchoolSettings": {
+      "title": "School Settings",
+      "description": "Global school configuration",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "logo": { "type": "string" },
+        "level": { "type": "string", "enum": ["Primary", "Secondary"] },
+        "classes": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["name", "level"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Student record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "reg": { "type": "string" },
+        "class": { "type": "string" },
+        "feesBalance": { "type": "number" }
+      },
+      "required": ["name", "reg", "class"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Staff and system users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" }
+      },
+      "required": ["name", "email", "role"]
+    },
+    "BorrowingRecord": {
+      "title": "Borrowing Record",
+      "description": "Library book loan record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "bookTitle": { "type": "string" },
+        "borrowDate": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "returned", "overdue"] }
+      },
+      "required": ["studentId", "bookTitle", "borrowDate", "dueDate", "status"]
+    },
+    "HealthRecord": {
+      "title": "Health Record",
+      "description": "Sick bay medical record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "sickness": { "type": "string" },
+        "medication": { "type": "string" },
+        "status": { "type": "string", "enum": ["sick", "sent-home", "back-in-class", "monitored"] },
+        "date": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["studentId", "sickness", "status", "date"]
+    },
+    "Transaction": {
+      "title": "Finance Transaction",
+      "description": "Income or expense transaction",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "category": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["type", "category", "amount", "date", "status"]
+    },
+    "Book": {
+      "title": "Library Book",
+      "description": "Book inventory record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "category": { "type": "string" },
+        "isbn": { "type": "string" },
+        "available": { "type": "number" },
+        "total": { "type": "number" }
+      },
+      "required": ["title", "author", "available", "total"]
+    },
+    "Mark": {
+      "title": "Academic Mark",
+      "description": "Student subject grade",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "subject": { "type": "string" },
+        "score": { "type": "number" },
+        "term": { "type": "string" },
+        "year": { "type": "string" },
+        "comment": { "type": "string" }
+      },
+      "required": ["studentId", "subject", "score", "term", "year"]
+    },
+    "InventoryProduct": {
+      "title": "Product",
+      "description": "Inventory item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "price": { "type": "number" },
+        "quantity": { "type": "number" },
+        "unit": { "type": "string" }
+      },
+      "required": ["name", "category", "price", "quantity"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Operational cost",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "description": { "type": "string" },
+        "amount": { "type": "number" },
+        "category": { "type": "string" },
+        "date": { "type": "string" },
+        "paidBy": { "type": "string" }
+      },
+      "required": ["description", "amount", "category", "date"]
+    },
+    "Staff": {
+      "title": "Staff",
+      "description": "Staff member record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "department": { "type": "string" },
+        "salary": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "on-leave", "terminated"] },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "joinDate": { "type": "string" }
+      },
+      "required": ["employeeId", "name", "role", "department", "salary", "status"]
+    },
+    "LeaveRequest": {
+      "title": "Leave Request",
+      "description": "Staff leave application",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "staffId": { "type": "string" },
+        "staffName": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "reason": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "type": { "type": "string", "enum": ["sick", "vacation", "emergency", "other"] },
+        "appliedDate": { "type": "string" }
+      },
+      "required": ["staffId", "staffName", "startDate", "endDate", "reason", "status", "type", "appliedDate"]
+    },
+    "FeeStructure": {
+      "title": "Fee Structure",
+      "description": "School fee categories by class",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "className": { "type": "string" },
+        "term": { "type": "string" },
+        "academicYear": { "type": "string" },
+        "items": { "type": "array" },
+        "totalAmount": { "type": "number" }
+      },
+      "required": ["className", "term", "academicYear", "totalAmount"]
+    },
+    "AttendanceRecord": {
+      "title": "Attendance Record",
+      "description": "Daily presence log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "date": { "type": "string" },
+        "status": { "type": "string", "enum": ["present", "absent", "late"] },
+        "role": { "type": "string", "enum": ["Student", "Staff"] },
+        "biometricVerified": { "type": "boolean" }
+      },
+      "required": ["studentId", "studentName", "date", "status", "role"]
+    },
+    "Vehicle": {
+      "title": "Vehicle",
+      "description": "Transport vehicle",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "plateNumber": { "type": "string" },
+        "model": { "type": "string" },
+        "driverId": { "type": "string" },
+        "driverName": { "type": "string" },
+        "capacity": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "maintenance", "inactive"] }
+      },
+      "required": ["plateNumber", "model", "driverId", "capacity", "status"]
+    },
+    "TransportRoute": {
+      "title": "Route",
+      "description": "Transport route and stops",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "stops": { "type": "array" },
+        "vehicleId": { "type": "string" },
+        "morningStartTime": { "type": "string" },
+        "eveningStartTime": { "type": "string" }
+      },
+      "required": ["name", "stops", "morningStartTime", "eveningStartTime"]
+    },
+    "Timetable": {
+      "title": "Timetable Entry",
+      "description": "Individual class schedule item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "day": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "subject": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "className": { "type": "string" },
+        "room": { "type": "string" }
+      },
+      "required": ["day", "startTime", "endTime", "subject", "teacherId", "className", "room"]
+    },
+    "AppNotification": {
+      "title": "Notification",
+      "description": "System notification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "warning", "error", "success"] },
+        "targetRole": { "type": "string" },
+        "read": { "type": "boolean" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["userId", "title", "message", "type", "read", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/settings/school": {
+      "schema": "SchoolSettings",
+      "description": "Global settings"
+    },
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "Student roster"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Staff roster"
+    },
+    "/borrowings/{recordId}": {
+      "schema": "BorrowingRecord",
+      "description": "Library logs"
+    },
+    "/healthRecords/{recordId}": {
+      "schema": "HealthRecord",
+      "description": "Sick bay logs"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Financial records"
+    },
+    "/books/{bookId}": {
+      "schema": "Book",
+      "description": "Book inventory"
+    },
+    "/marks/{markId}": {
+      "schema": "Mark",
+      "description": "Academic records"
+    },
+    "/inventory/{productId}": {
+      "schema": "InventoryProduct",
+      "description": "School supply inventory"
+    },
+    "/expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "Operational costs"
+    },
+    "/staff/{staffId}": {
+      "schema": "Staff",
+      "description": "Staff members"
+    },
+    "/leaveRequests/{requestId}": {
+      "schema": "LeaveRequest",
+      "description": "Staff leave management"
+    },
+    "/feeStructures/{structureId}": {
+      "schema": "FeeStructure",
+      "description": "Fee categorization"
+    },
+    "/attendance/{attendanceId}": {
+      "schema": "AttendanceRecord",
+      "description": "Attendance tracking"
+    },
+    "/vehicles/{vehicleId}": {
+      "schema": "Vehicle",
+      "description": "Transport vehicles"
+    },
+    "/routes/{routeId}": {
+      "schema": "TransportRoute",
+      "description": "Transport routes"
+    },
+    "/timetable/{entryId}": {
+      "schema": "Timetable",
+      "description": "Class schedules"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "AppNotification",
+      "description": "System alerts"
+    }
+  }
+}
