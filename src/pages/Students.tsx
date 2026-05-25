@@ -17,6 +17,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { cn } from "../lib/utils";
 import { useApp } from "../context/AppContext";
+import { uploadDataUrlAsset } from "../lib/api";
 
 const studentSchema = z.object({
   firstName: z.string().min(2, "First name is too short"),
@@ -121,13 +122,14 @@ export default function Students() {
   };
 
   const onSubmit = async (data: StudentFormValues) => {
+    const storedPhoto = await uploadDataUrlAsset(photoPreview, "students");
     const studentData: any = {
       name: `${data.firstName} ${data.lastName}`,
       reg: editingStudent ? editingStudent.reg : generateRegNumber(),
       class: data.class,
       parent: data.parentName,
       status: "active" as const,
-      photo: photoPreview,
+      photo: storedPhoto,
       totalFeesPaid: editingStudent ? editingStudent.totalFeesPaid : 0,
     };
 

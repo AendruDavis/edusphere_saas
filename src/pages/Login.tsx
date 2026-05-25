@@ -121,7 +121,7 @@ export default function Login() {
             disabled={isLoggingIn}
             className="w-full flex items-center justify-center gap-3 py-4 border-2 border-gray-100 rounded-3xl text-xs font-black uppercase tracking-widest text-gray-600 hover:bg-gray-50 transition-all active:scale-95 shadow-sm"
           >
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-4 h-4" alt="" />
+            <LogIn className="w-4 h-4" />
             Google SSO
           </button>
         </div>

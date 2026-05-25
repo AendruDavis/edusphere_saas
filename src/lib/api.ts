@@ -1,8 +1,30 @@
-import { auth } from "./firebase";
+const ACCESS_TOKEN_KEY = "edu_supabase_access_token";
+const REFRESH_TOKEN_KEY = "edu_supabase_refresh_token";
 
 type ApiOptions = RequestInit & {
   json?: unknown;
 };
+
+export type AuthSession = {
+  accessToken: string;
+  refreshToken?: string;
+};
+
+export function getAccessToken() {
+  return localStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
+export function setAuthSession(session: AuthSession) {
+  localStorage.setItem(ACCESS_TOKEN_KEY, session.accessToken);
+  if (session.refreshToken) {
+    localStorage.setItem(REFRESH_TOKEN_KEY, session.refreshToken);
+  }
+}
+
+export function clearAuthSession() {
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+}
 
 export async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const headers = new Headers(options.headers);
@@ -11,7 +33,7 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
     headers.set("Content-Type", "application/json");
   }
 
-  const token = await auth.currentUser?.getIdToken();
+  const token = getAccessToken();
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
@@ -36,4 +58,13 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
   }
 
   return payload as T;
+}
+
+export async function uploadDataUrlAsset(dataUrl: string | null | undefined, folder: string) {
+  if (!dataUrl || !dataUrl.startsWith("data:")) return dataUrl ?? null;
+  const result = await apiRequest<{ url: string }>("/api/storage/data-url", {
+    method: "POST",
+    json: { dataUrl, folder },
+  });
+  return result.url;
 }

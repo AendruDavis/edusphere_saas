@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { cn, formatCurrency } from "../lib/utils";
 import { useApp } from "../context/AppContext";
+import { uploadDataUrlAsset } from "../lib/api";
 
 export default function Settings() {
   const { schoolSettings, setSchoolSettings, users, updateUser } = useApp();
@@ -113,9 +114,10 @@ export default function Settings() {
   const SECONDARY_CLASSES = ["S.1", "S.2", "S.3", "S.4", "S.5", "S.6"];
 
   const saveBranding = async () => {
+    const storedLogo = await uploadDataUrlAsset(localSettings.logo, "branding");
     await setSchoolSettings({
       name: localSettings.name,
-      logo: localSettings.logo,
+      logo: storedLogo,
       level: localSettings.level as "Primary" | "Secondary",
       classes: localSettings.classes,
       currency: localSettings.currency,
