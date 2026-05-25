@@ -245,10 +245,10 @@
         "subject": { "type": "string" },
         "teacherId": { "type": "string" },
         "teacherName": { "type": "string" },
-        "className": { "type": "string" },
+        "class": { "type": "string" },
         "room": { "type": "string" }
       },
-      "required": ["day", "startTime", "endTime", "subject", "teacherId", "className", "room"]
+      "required": ["day", "startTime", "endTime", "subject", "teacherId", "class", "room"]
     },
     "AppNotification": {
       "title": "Notification",
@@ -265,6 +265,48 @@
         "timestamp": { "type": "string" }
       },
       "required": ["userId", "title", "message", "type", "read", "timestamp"]
+    },
+    "Dormitory": {
+      "title": "Dormitory",
+      "description": "Boarding house or dormitory building",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "capacity": { "type": "number" },
+        "gender": { "type": "string", "enum": ["Male", "Female", "Mixed"] },
+        "rooms": { "type": "array", "items": { "type": "string" } },
+        "wardenName": { "type": "string" }
+      },
+      "required": ["name", "capacity", "gender", "rooms"]
+    },
+    "DormRoom": {
+      "title": "Dorm Room",
+      "description": "Individual room inside a dormitory",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "dormId": { "type": "string" },
+        "roomNumber": { "type": "string" },
+        "capacity": { "type": "number" },
+        "occupants": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["dormId", "roomNumber", "capacity", "occupants"]
+    },
+    "DormAllocation": {
+      "title": "Dorm Allocation",
+      "description": "Student room allocation record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "dormId": { "type": "string" },
+        "roomId": { "type": "string" },
+        "allocationDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "checked-out"] }
+      },
+      "required": ["studentId", "studentName", "dormId", "roomId", "allocationDate", "status"]
     }
   },
   "firestore": {
@@ -339,6 +381,18 @@
     "/notifications/{notificationId}": {
       "schema": "AppNotification",
       "description": "System alerts"
+    },
+    "/dormitories/{dormitoryId}": {
+      "schema": "Dormitory",
+      "description": "Boarding houses"
+    },
+    "/dormRooms/{roomId}": {
+      "schema": "DormRoom",
+      "description": "Dormitory rooms"
+    },
+    "/dormAllocations/{allocationId}": {
+      "schema": "DormAllocation",
+      "description": "Student room allocations"
     }
   }
 }

@@ -49,7 +49,7 @@ service cloud.firestore {
     function isValidUser(data) {
       return data.name is string && data.name.size() > 0 && data.name.size() <= 100
         && data.email is string && data.email.size() > 0 && data.email.size() <= 100
-        && data.role in ['admin', 'teacher', 'student', 'parent', 'accountant', 'staff', 'driver'];
+        && data.role in ['admin', 'teacher', 'student', 'parent', 'accountant', 'staff', 'driver', 'librarian', 'nurse'];
     }
 
     function isValidBorrowing(data) {
@@ -125,12 +125,37 @@ service cloud.firestore {
 
     function isValidTimetable(data) {
       return data.day is string && data.startTime is string && data.endTime is string
-        && data.subject is string && data.teacherId is string && data.className is string && data.room is string;
+        && data.subject is string && data.teacherId is string
+        && (data.class is string || data.className is string)
+        && data.room is string;
     }
 
     function isValidNotification(data) {
       return data.userId is string && data.title is string && data.message is string
         && data.type in ['info', 'warning', 'error', 'success'] && data.read is bool;
+    }
+
+    function isValidDormitory(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.capacity is number
+        && data.gender in ['Male', 'Female', 'Mixed']
+        && data.rooms is list;
+    }
+
+    function isValidDormRoom(data) {
+      return data.dormId is string
+        && data.roomNumber is string && data.roomNumber.size() > 0 && data.roomNumber.size() <= 50
+        && data.capacity is number
+        && data.occupants is list;
+    }
+
+    function isValidDormAllocation(data) {
+      return data.studentId is string
+        && data.studentName is string
+        && data.dormId is string
+        && data.roomId is string
+        && data.allocationDate is string
+        && data.status in ['active', 'checked-out'];
     }
 
     // Collection Rules
@@ -255,6 +280,27 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && isValidNotification(incoming());
       allow update: if isSignedIn() && (isAdmin() || (resource.data.userId == request.auth.uid)) && isValidNotification(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /dormitories/{dormitoryId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidDormitory(incoming());
+      allow update: if isAdmin() && isValidDormitory(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /dormRooms/{roomId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidDormRoom(incoming());
+      allow update: if isAdmin() && isValidDormRoom(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /dormAllocations/{allocationId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidDormAllocation(incoming());
+      allow update: if isAdmin() && isValidDormAllocation(incoming());
       allow delete: if isAdmin();
     }
   }

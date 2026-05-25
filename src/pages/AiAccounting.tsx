@@ -13,6 +13,7 @@ import {
   ArrowRight
 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { apiRequest } from "../lib/api";
 
 export default function AiAccounting() {
   const [query, setQuery] = useState("");
@@ -22,10 +23,9 @@ export default function AiAccounting() {
   const handleDeepAudit = async () => {
     setIsAnalyzing(true);
     // Same endpoint as Finance but with a "Deep Audit" intent
-    const res = await fetch("/api/ai/accounting/analyze", {
+    const data = await apiRequest<{ analysis: string }>("/api/ai/accounting/analyze", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
+      json: { 
         transactions: [
           { category: "Tuition", amount: 120000 },
           { category: "Payroll", amount: 45000 },
@@ -34,9 +34,8 @@ export default function AiAccounting() {
           { category: "Water", amount: 400 },
         ],
         query: query || "Perform a full financial health audit and project revenue for next quarter."
-      })
+      }
     });
-    const data = await res.json();
     setResult(data.analysis);
     setIsAnalyzing(false);
   };

@@ -16,7 +16,7 @@ import { cn, formatCurrency } from "../lib/utils";
 import { useApp } from "../context/AppContext";
 
 export default function Settings() {
-  const { schoolSettings, setSchoolSettings, users, setUsers, updateUser } = useApp();
+  const { schoolSettings, setSchoolSettings, users, updateUser } = useApp();
   const [isCompressing, setIsCompressing] = useState(false);
   const [newGrade, setNewGrade] = useState({ min: 0, grade: "A", comment: "Excellent" });
   const [localSettings, setLocalSettings] = useState({

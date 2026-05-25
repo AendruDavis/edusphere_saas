@@ -91,7 +91,7 @@ export default function Staff() {
 
   const handleEdit = (s: any) => {
     setEditingStaff(s);
-    setFormData({ name: s.name, email: s.email, role: s.role, dept: s.dept || "", password: s.password || "" });
+    setFormData({ name: s.name, email: s.email, role: s.role, dept: s.dept || "", password: "" });
     setIsModalOpen(true);
   };
 
@@ -103,10 +103,15 @@ export default function Staff() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const payload: any = { ...formData };
+    if (editingStaff && !payload.password) {
+      delete payload.password;
+    }
+
     if (editingStaff) {
-      await updateUser(editingStaff.id, formData);
+      await updateUser(editingStaff.id, payload);
     } else {
-      await addUser(formData);
+      await addUser(payload);
     }
     setIsModalOpen(false);
     setEditingStaff(null);
@@ -123,7 +128,7 @@ export default function Staff() {
         <div className="flex gap-2">
           {activeTab === "users" && (
             <button 
-              onClick={() => { setEditingStaff(null); setFormData({ name: "", email: "", role: "teacher", dept: "" }); setIsModalOpen(true); }}
+              onClick={() => { setEditingStaff(null); setFormData({ name: "", email: "", role: "teacher", dept: "", password: "password123" }); setIsModalOpen(true); }}
               className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 shadow-sm transition-all"
             >
               <Plus className="w-4 h-4" />
@@ -454,8 +459,8 @@ export default function Staff() {
                   </div>
                   <div className="space-y-1">
                     <label className="text-sm font-medium text-gray-700">Access Password</label>
-                    <input type="text" required value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none font-mono" />
-                    <p className="text-[10px] text-gray-400 mt-1 italic">Provide this password to the staff member for login.</p>
+                    <input type="text" required={!editingStaff} value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none font-mono" />
+                    <p className="text-[10px] text-gray-400 mt-1 italic">{editingStaff ? "Leave blank to keep the existing password." : "Provide this password to the staff member for login."}</p>
                   </div>
                   <div className="space-y-1">
                     <label className="text-sm font-medium text-gray-700">Role</label>

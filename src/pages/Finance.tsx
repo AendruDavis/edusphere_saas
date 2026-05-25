@@ -15,6 +15,7 @@ import {
   MessageSquare
 } from "lucide-react";
 import { cn, formatCurrency } from "../lib/utils";
+import { apiRequest } from "../lib/api";
 import { useApp } from "../context/AppContext";
 import { Transaction } from "../types";
 
@@ -61,15 +62,13 @@ export default function Finance() {
   const handleAiAnalyze = async () => {
     setIsAiLoading(true);
     try {
-      const res = await fetch("/api/ai/accounting/analyze", {
+      const data = await apiRequest<{ analysis: string }>("/api/ai/accounting/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        json: { 
           transactions, 
           query: "What is our current financial health and are there any anomalies?" 
-        })
+        }
       });
-      const data = await res.json();
       setAiInsight(data.analysis);
     } catch (err) {
       console.error(err);

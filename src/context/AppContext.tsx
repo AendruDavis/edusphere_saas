@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { 
   onAuthStateChanged, 
-  User as FirebaseUser,
   signInWithPopup,
   GoogleAuthProvider,
-  signOut
+  signOut,
+  signInWithCustomToken,
+  signInWithEmailAndPassword
 } from "firebase/auth";
 import { 
   collection, 
@@ -20,6 +21,7 @@ import {
   getDocs
 } from "firebase/firestore";
 import { auth, db, handleFirestoreError, OperationType } from "../lib/firebase";
+import { apiRequest } from "../lib/api";
 import { 
   User, 
   SchoolSettings, 
@@ -174,20 +176,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Sync Auth
   useEffect(() => {
-    // 1. Check for manual session first
-    const savedSession = localStorage.getItem("edu_session");
-    if (savedSession) {
-      try {
-        const sessionUser = JSON.parse(savedSession);
-        setCurrentUser(sessionUser);
-        setLoading(false);
-        return;
-      } catch (e) {
-        localStorage.removeItem("edu_session");
-      }
-    }
-
-    // 2. Fallback to Firebase Auth
+    localStorage.removeItem("edu_session");
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         // Find or create user record in Firestore
@@ -359,17 +348,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addTransaction = async (record: Omit<Transaction, "id">) => {
     try {
-      await addDoc(collection(db, "transactions"), record);
-      
-      // Update student balance if it's a fees payment
-      if (record.type === "income" && record.studentId) {
-        const student = students.find(s => s.id === record.studentId);
-        if (student) {
-          await updateDoc(doc(db, "students", student.id), {
-            totalFeesPaid: student.totalFeesPaid + record.amount
-          });
-        }
-      }
+      await apiRequest<Transaction>("/api/transactions", {
+        method: "POST",
+        json: record,
+      });
     } catch (e) {
       handleFirestoreError(e, OperationType.CREATE, "transactions");
     }
@@ -449,14 +431,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addExpense = async (expense: Omit<Expense, "id">) => {
     try {
-      await addDoc(collection(db, "expenses"), expense);
-      // Also add to transactions for general ledger
-      await addDoc(collection(db, "transactions"), {
-        type: "expense",
-        category: expense.category,
-        amount: expense.amount,
-        date: expense.date,
-        status: "completed"
+      await apiRequest<Expense>("/api/expenses", {
+        method: "POST",
+        json: expense,
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, "expenses");
@@ -537,7 +514,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addAttendanceRecord = async (record: Omit<AttendanceRecord, "id">) => {
     try {
-      await addDoc(collection(db, "attendance"), record);
+      await apiRequest<AttendanceRecord>("/api/attendance", {
+        method: "POST",
+        json: record,
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, "attendance");
     }
@@ -750,24 +730,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const loginWithCredentials = async (email: string, pass: string, role: string) => {
     setIsLoggingIn(true);
     try {
-      const usersRef = collection(db, "users");
-      const q = query(usersRef, where("email", "==", email), where("role", "==", role));
-      const querySnapshot = await getDocs(q);
-      
-      if (querySnapshot.empty) {
-        throw new Error("No account found with this email and role.");
-      }
-      
-      const userData = querySnapshot.docs[0].data() as User;
-      const userId = querySnapshot.docs[0].id;
+      try {
+        const credential = await signInWithEmailAndPassword(auth, email, pass);
+        const userDoc = await getDoc(doc(db, "users", credential.user.uid));
+        const userData = userDoc.data() as User | undefined;
 
-      if (userData.password !== pass) {
-        throw new Error("Incorrect password for this account.");
+        if (!userDoc.exists() || userData?.role !== role) {
+          await signOut(auth);
+          throw new Error("No account found with this email and role.");
+        }
+      } catch (firebaseError) {
+        await signOut(auth).catch(() => undefined);
+        const { customToken } = await apiRequest<{ customToken: string }>("/api/auth/login", {
+          method: "POST",
+          json: { email, pass, role },
+        });
+        await signInWithCustomToken(auth, customToken);
       }
-
-      const sessionUser = { ...userData, id: userId };
-      setCurrentUser(sessionUser);
-      localStorage.setItem("edu_session", JSON.stringify(sessionUser));
     } catch (err: any) {
       alert(err.message || "Credential login failed");
       throw err;
@@ -838,7 +817,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addUser = async (user: Omit<User, "id">) => {
     try {
-      await addDoc(collection(db, "users"), user);
+      await apiRequest<User>("/api/users", {
+        method: "POST",
+        json: user,
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, "users");
     }
@@ -846,7 +828,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateUser = async (id: string, data: Partial<User>) => {
     try {
-      await updateDoc(doc(db, "users", id), data);
+      await apiRequest<User>(`/api/users/${id}`, {
+        method: "PATCH",
+        json: data,
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${id}`);
     }
@@ -854,7 +839,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const deleteUser = async (id: string) => {
     try {
-      await deleteDoc(doc(db, "users", id));
+      await apiRequest<{ success: boolean }>(`/api/users/${id}`, {
+        method: "DELETE",
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `users/${id}`);
     }

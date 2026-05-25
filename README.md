@@ -18,3 +18,9 @@ View your app in AI Studio: https://ai.studio/apps/3a494cf7-f722-4c83-a9d3-0fd4d
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+## Backend
+
+The app runs through the Express server in [server.ts](server.ts). API routes use Firebase Admin for trusted writes such as login-account provisioning, ledger transactions, expenses, attendance, GPS updates, and biometric check-ins.
+
+For local backend development, configure Firebase Admin with either Application Default Credentials or the `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` values shown in [.env.example](.env.example). Hardware integration endpoints also require `INTEGRATION_WEBHOOK_SECRET` and expect it in the `x-integration-secret` header.
