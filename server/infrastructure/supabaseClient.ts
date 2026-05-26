@@ -9,6 +9,9 @@ function requireEnv(name: string) {
   if (!value) {
     throw new AppError(503, `${name} is not configured`);
   }
+  if (value.startsWith("your-") || value.startsWith("MY_")) {
+    throw new AppError(503, `${name} is still set to the placeholder value`);
+  }
   return value;
 }
 
