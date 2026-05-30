@@ -1,12 +1,5 @@
 create extension if not exists pgcrypto;
 
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('school-assets', 'school-assets', true, 3145728, array['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
-on conflict (id) do update
-set public = excluded.public,
-    file_size_limit = excluded.file_size_limit,
-    allowed_mime_types = excluded.allowed_mime_types;
-
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -17,18 +10,19 @@ begin
 end;
 $$;
 
-create table public.users (
-  id uuid primary key references auth.users(id) on delete cascade,
+create table if not exists public.users (
+  id uuid primary key default gen_random_uuid(),
   name text not null,
   email text not null unique,
   role text not null check (role in ('admin', 'teacher', 'student', 'parent', 'accountant', 'staff', 'driver', 'librarian', 'nurse')),
+  "passwordHash" text not null,
   photo text,
   dept text,
   "createdAt" timestamptz not null default now(),
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.user_roles (
+create table if not exists public.user_roles (
   id uuid primary key default gen_random_uuid(),
   "userId" uuid not null references public.users(id) on delete cascade,
   role text not null check (role in ('admin', 'teacher', 'student', 'parent', 'accountant', 'staff', 'driver', 'librarian', 'nurse')),
@@ -39,7 +33,7 @@ create table public.user_roles (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.school_settings (
+create table if not exists public.school_settings (
   id boolean primary key default true check (id),
   name text not null default 'EduSphere Academy',
   logo text,
@@ -59,7 +53,7 @@ create table public.school_settings (
 insert into public.school_settings (id) values (true)
 on conflict (id) do nothing;
 
-create table public.students (
+create table if not exists public.students (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   reg text not null unique,
@@ -81,7 +75,7 @@ create table public.students (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.staff (
+create table if not exists public.staff (
   id uuid primary key default gen_random_uuid(),
   "employeeId" text not null unique,
   name text not null,
@@ -96,7 +90,7 @@ create table public.staff (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.leave_requests (
+create table if not exists public.leave_requests (
   id uuid primary key default gen_random_uuid(),
   "staffId" uuid references public.staff(id) on delete cascade,
   "staffName" text not null,
@@ -110,7 +104,7 @@ create table public.leave_requests (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.books (
+create table if not exists public.books (
   id uuid primary key default gen_random_uuid(),
   title text not null,
   author text not null,
@@ -122,7 +116,7 @@ create table public.books (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.borrowings (
+create table if not exists public.borrowings (
   id uuid primary key default gen_random_uuid(),
   "studentId" uuid references public.students(id) on delete cascade,
   "studentName" text not null,
@@ -134,7 +128,7 @@ create table public.borrowings (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.health_records (
+create table if not exists public.health_records (
   id uuid primary key default gen_random_uuid(),
   "studentId" uuid references public.students(id) on delete cascade,
   "studentName" text not null,
@@ -147,7 +141,7 @@ create table public.health_records (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.marks (
+create table if not exists public.marks (
   id uuid primary key default gen_random_uuid(),
   "studentId" uuid references public.students(id) on delete cascade,
   subject text not null,
@@ -159,7 +153,7 @@ create table public.marks (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.inventory (
+create table if not exists public.inventory (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   category text not null,
@@ -170,7 +164,7 @@ create table public.inventory (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.transactions (
+create table if not exists public.transactions (
   id uuid primary key default gen_random_uuid(),
   type text not null check (type in ('income', 'expense')),
   category text not null,
@@ -185,7 +179,7 @@ create table public.transactions (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.expenses (
+create table if not exists public.expenses (
   id uuid primary key default gen_random_uuid(),
   description text not null,
   amount numeric(14,2) not null check (amount >= 0),
@@ -196,7 +190,7 @@ create table public.expenses (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.fee_structures (
+create table if not exists public.fee_structures (
   id uuid primary key default gen_random_uuid(),
   "className" text not null,
   term text not null,
@@ -207,7 +201,7 @@ create table public.fee_structures (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.attendance_records (
+create table if not exists public.attendance_records (
   id uuid primary key default gen_random_uuid(),
   "studentId" text not null,
   "studentName" text not null,
@@ -220,7 +214,7 @@ create table public.attendance_records (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.vehicles (
+create table if not exists public.vehicles (
   id uuid primary key default gen_random_uuid(),
   "plateNumber" text not null unique,
   model text not null,
@@ -233,7 +227,7 @@ create table public.vehicles (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.routes (
+create table if not exists public.routes (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   stops jsonb not null default '[]'::jsonb,
@@ -244,7 +238,7 @@ create table public.routes (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.timetable_entries (
+create table if not exists public.timetable_entries (
   id uuid primary key default gen_random_uuid(),
   day text not null check (day in ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')),
   "startTime" text not null,
@@ -259,7 +253,7 @@ create table public.timetable_entries (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.dormitories (
+create table if not exists public.dormitories (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   capacity integer not null default 0,
@@ -270,7 +264,7 @@ create table public.dormitories (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.dorm_rooms (
+create table if not exists public.dorm_rooms (
   id uuid primary key default gen_random_uuid(),
   "dormId" uuid not null references public.dormitories(id) on delete cascade,
   "roomNumber" text not null,
@@ -281,7 +275,7 @@ create table public.dorm_rooms (
   unique ("dormId", "roomNumber")
 );
 
-create table public.dorm_allocations (
+create table if not exists public.dorm_allocations (
   id uuid primary key default gen_random_uuid(),
   "studentId" uuid not null references public.students(id) on delete cascade,
   "studentName" text not null,
@@ -293,7 +287,7 @@ create table public.dorm_allocations (
   "updatedAt" timestamptz not null default now()
 );
 
-create table public.notifications (
+create table if not exists public.notifications (
   id uuid primary key default gen_random_uuid(),
   "userId" text not null default 'all',
   title text not null,
@@ -306,60 +300,70 @@ create table public.notifications (
   "updatedAt" timestamptz not null default now()
 );
 
-create index students_class_idx on public.students (class);
-create index users_role_idx on public.users (role);
-create unique index user_roles_one_active_role_idx on public.user_roles ("userId") where active;
-create index user_roles_user_idx on public.user_roles ("userId", active);
-create index transactions_student_idx on public.transactions ("studentId");
-create index attendance_student_date_idx on public.attendance_records ("studentId", date);
-create index dorm_allocations_student_idx on public.dorm_allocations ("studentId");
-create index notifications_target_idx on public.notifications ("userId", "targetRole", read);
+create index if not exists students_class_idx on public.students (class);
+create index if not exists users_role_idx on public.users (role);
+create unique index if not exists user_roles_one_active_role_idx on public.user_roles ("userId") where active;
+create index if not exists user_roles_user_idx on public.user_roles ("userId", active);
+create index if not exists transactions_student_idx on public.transactions ("studentId");
+create index if not exists attendance_student_date_idx on public.attendance_records ("studentId", date);
+create index if not exists dorm_allocations_student_idx on public.dorm_allocations ("studentId");
+create index if not exists notifications_target_idx on public.notifications ("userId", "targetRole", read);
 
+drop trigger if exists users_set_updated_at on public.users;
 create trigger users_set_updated_at before update on public.users for each row execute function public.set_updated_at();
+drop trigger if exists user_roles_set_updated_at on public.user_roles;
 create trigger user_roles_set_updated_at before update on public.user_roles for each row execute function public.set_updated_at();
+drop trigger if exists school_settings_set_updated_at on public.school_settings;
 create trigger school_settings_set_updated_at before update on public.school_settings for each row execute function public.set_updated_at();
+drop trigger if exists students_set_updated_at on public.students;
 create trigger students_set_updated_at before update on public.students for each row execute function public.set_updated_at();
+drop trigger if exists staff_set_updated_at on public.staff;
 create trigger staff_set_updated_at before update on public.staff for each row execute function public.set_updated_at();
+drop trigger if exists leave_requests_set_updated_at on public.leave_requests;
 create trigger leave_requests_set_updated_at before update on public.leave_requests for each row execute function public.set_updated_at();
+drop trigger if exists books_set_updated_at on public.books;
 create trigger books_set_updated_at before update on public.books for each row execute function public.set_updated_at();
+drop trigger if exists borrowings_set_updated_at on public.borrowings;
 create trigger borrowings_set_updated_at before update on public.borrowings for each row execute function public.set_updated_at();
+drop trigger if exists health_records_set_updated_at on public.health_records;
 create trigger health_records_set_updated_at before update on public.health_records for each row execute function public.set_updated_at();
+drop trigger if exists marks_set_updated_at on public.marks;
 create trigger marks_set_updated_at before update on public.marks for each row execute function public.set_updated_at();
+drop trigger if exists inventory_set_updated_at on public.inventory;
 create trigger inventory_set_updated_at before update on public.inventory for each row execute function public.set_updated_at();
+drop trigger if exists transactions_set_updated_at on public.transactions;
 create trigger transactions_set_updated_at before update on public.transactions for each row execute function public.set_updated_at();
+drop trigger if exists expenses_set_updated_at on public.expenses;
 create trigger expenses_set_updated_at before update on public.expenses for each row execute function public.set_updated_at();
+drop trigger if exists fee_structures_set_updated_at on public.fee_structures;
 create trigger fee_structures_set_updated_at before update on public.fee_structures for each row execute function public.set_updated_at();
+drop trigger if exists attendance_records_set_updated_at on public.attendance_records;
 create trigger attendance_records_set_updated_at before update on public.attendance_records for each row execute function public.set_updated_at();
+drop trigger if exists vehicles_set_updated_at on public.vehicles;
 create trigger vehicles_set_updated_at before update on public.vehicles for each row execute function public.set_updated_at();
+drop trigger if exists routes_set_updated_at on public.routes;
 create trigger routes_set_updated_at before update on public.routes for each row execute function public.set_updated_at();
+drop trigger if exists timetable_entries_set_updated_at on public.timetable_entries;
 create trigger timetable_entries_set_updated_at before update on public.timetable_entries for each row execute function public.set_updated_at();
+drop trigger if exists dormitories_set_updated_at on public.dormitories;
 create trigger dormitories_set_updated_at before update on public.dormitories for each row execute function public.set_updated_at();
+drop trigger if exists dorm_rooms_set_updated_at on public.dorm_rooms;
 create trigger dorm_rooms_set_updated_at before update on public.dorm_rooms for each row execute function public.set_updated_at();
+drop trigger if exists dorm_allocations_set_updated_at on public.dorm_allocations;
 create trigger dorm_allocations_set_updated_at before update on public.dorm_allocations for each row execute function public.set_updated_at();
+drop trigger if exists notifications_set_updated_at on public.notifications;
 create trigger notifications_set_updated_at before update on public.notifications for each row execute function public.set_updated_at();
 
 create or replace function public.record_transaction(transaction_input jsonb)
 returns jsonb
 language plpgsql
-security definer
-set search_path = public
 as $$
 declare
   inserted public.transactions%rowtype;
   tx_amount numeric(14,2) := coalesce(nullif(transaction_input->>'amount', '')::numeric, 0);
   tx_student_id uuid := nullif(transaction_input->>'studentId', '')::uuid;
 begin
-  insert into public.transactions (
-    type,
-    category,
-    amount,
-    date,
-    status,
-    "studentId",
-    reference,
-    description,
-    currency
-  )
+  insert into public.transactions (type, category, amount, date, status, "studentId", reference, description, currency)
   values (
     coalesce(transaction_input->>'type', 'income'),
     coalesce(transaction_input->>'category', 'General'),
@@ -386,19 +390,11 @@ $$;
 create or replace function public.record_expense(expense_input jsonb)
 returns jsonb
 language plpgsql
-security definer
-set search_path = public
 as $$
 declare
   inserted public.expenses%rowtype;
 begin
-  insert into public.expenses (
-    description,
-    amount,
-    category,
-    date,
-    "paidBy"
-  )
+  insert into public.expenses (description, amount, category, date, "paidBy")
   values (
     coalesce(expense_input->>'description', 'Expense'),
     coalesce(nullif(expense_input->>'amount', '')::numeric, 0),
@@ -408,24 +404,8 @@ begin
   )
   returning * into inserted;
 
-  insert into public.transactions (
-    type,
-    category,
-    amount,
-    date,
-    status,
-    reference,
-    description
-  )
-  values (
-    'expense',
-    inserted.category,
-    inserted.amount,
-    inserted.date,
-    'completed',
-    'EXP-' || right(inserted.id::text, 8),
-    inserted.description
-  );
+  insert into public.transactions (type, category, amount, date, status, reference, description)
+  values ('expense', inserted.category, inserted.amount, inserted.date, 'completed', 'EXP-' || right(inserted.id::text, 8), inserted.description);
 
   return to_jsonb(inserted);
 end;
@@ -434,34 +414,19 @@ $$;
 create or replace function public.record_biometric_check_in(check_in jsonb)
 returns jsonb
 language plpgsql
-security definer
-set search_path = public
 as $$
 declare
   matched_student public.students%rowtype;
   inserted public.attendance_records%rowtype;
 begin
-  select *
-  into matched_student
-  from public.students
-  where "fingerprintId" = check_in->>'fingerprintId'
-  limit 1;
-
+  select * into matched_student from public.students where "fingerprintId" = check_in->>'fingerprintId' limit 1;
   if matched_student.id is null then
     raise exception 'No student matched this fingerprint';
   end if;
 
-  insert into public.attendance_records (
-    "studentId",
-    "studentName",
-    date,
-    status,
-    role,
-    "biometricVerified",
-    "deviceId"
-  )
+  insert into public.attendance_records ("studentId", "studentName", date, status, role, "biometricVerified", "deviceId")
   values (
-    matched_student.id,
+    matched_student.id::text,
     matched_student.name,
     coalesce(nullif(check_in->>'date', '')::date, current_date),
     coalesce(check_in->>'status', 'present'),
@@ -478,8 +443,6 @@ $$;
 create or replace function public.update_vehicle_location(location_input jsonb)
 returns jsonb
 language plpgsql
-security definer
-set search_path = public
 as $$
 declare
   updated public.vehicles%rowtype;
@@ -501,35 +464,3 @@ begin
   return to_jsonb(updated);
 end;
 $$;
-
-alter table public.users enable row level security;
-alter table public.user_roles enable row level security;
-alter table public.school_settings enable row level security;
-alter table public.students enable row level security;
-alter table public.staff enable row level security;
-alter table public.leave_requests enable row level security;
-alter table public.books enable row level security;
-alter table public.borrowings enable row level security;
-alter table public.health_records enable row level security;
-alter table public.marks enable row level security;
-alter table public.inventory enable row level security;
-alter table public.transactions enable row level security;
-alter table public.expenses enable row level security;
-alter table public.fee_structures enable row level security;
-alter table public.attendance_records enable row level security;
-alter table public.vehicles enable row level security;
-alter table public.routes enable row level security;
-alter table public.timetable_entries enable row level security;
-alter table public.dormitories enable row level security;
-alter table public.dorm_rooms enable row level security;
-alter table public.dorm_allocations enable row level security;
-alter table public.notifications enable row level security;
-
-revoke execute on function public.record_transaction(jsonb) from public, anon, authenticated;
-revoke execute on function public.record_expense(jsonb) from public, anon, authenticated;
-revoke execute on function public.record_biometric_check_in(jsonb) from public, anon, authenticated;
-revoke execute on function public.update_vehicle_location(jsonb) from public, anon, authenticated;
-grant execute on function public.record_transaction(jsonb) to service_role;
-grant execute on function public.record_expense(jsonb) to service_role;
-grant execute on function public.record_biometric_check_in(jsonb) to service_role;
-grant execute on function public.update_vehicle_location(jsonb) to service_role;

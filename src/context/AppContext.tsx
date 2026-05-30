@@ -268,7 +268,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = async () => {
-    alert("Google SSO will be connected through Supabase OAuth after credential login is live.");
+    alert("Google SSO can be added later through a backend OAuth provider. Credential login is active.");
   };
 
   const loginWithCredentials = async (email: string, pass: string, role: string) => {

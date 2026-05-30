@@ -1,5 +1,5 @@
-const ACCESS_TOKEN_KEY = "edu_supabase_access_token";
-const REFRESH_TOKEN_KEY = "edu_supabase_refresh_token";
+const ACCESS_TOKEN_KEY = "edu_postgres_access_token";
+const REFRESH_TOKEN_KEY = "edu_postgres_refresh_token";
 
 type ApiOptions = RequestInit & {
   json?: unknown;

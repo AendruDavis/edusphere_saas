@@ -25,8 +25,10 @@ async function startServer() {
 
   const app = express();
   const PORT = 3000;
+  const uploadsPath = path.join(projectRoot, "public", "uploads");
 
   app.use(express.json());
+  app.use("/uploads", express.static(uploadsPath));
   registerBackendRoutes(app, genAI);
 
   // Vite middleware

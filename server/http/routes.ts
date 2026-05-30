@@ -14,7 +14,7 @@ export function registerBackendRoutes(app: Express, genAI: GoogleGenAI | null) {
   const storageService = new StorageService();
 
   app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", database: "supabase-postgres" });
+    res.json({ status: "ok", database: "postgresql" });
   });
 
   app.post(

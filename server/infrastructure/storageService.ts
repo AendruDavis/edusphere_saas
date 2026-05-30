@@ -1,8 +1,9 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { AppError } from "../domain/errors";
-import { getSupabaseAdminClient } from "./supabaseClient";
 
-const DEFAULT_BUCKET = "school-assets";
+const UPLOAD_ROOT = path.join(process.cwd(), "public", "uploads");
 
 type ParsedDataUrl = {
   buffer: Buffer;
@@ -33,38 +34,18 @@ function safeFolder(folder: string | undefined) {
 }
 
 export class StorageService {
-  private readonly bucket = process.env.SUPABASE_STORAGE_BUCKET || DEFAULT_BUCKET;
-
   async uploadDataUrl(input: { dataUrl: string; folder?: string; fileName?: string }) {
-    const client = getSupabaseAdminClient();
     const parsed = parseDataUrl(input.dataUrl);
-    await this.ensureBucket();
-
+    const folder = safeFolder(input.folder);
     const baseName = input.fileName?.replace(/[^a-z0-9._-]/gi, "") || `${randomUUID()}.${parsed.extension}`;
-    const objectPath = `${safeFolder(input.folder)}/${Date.now()}-${baseName}`;
-    const { error } = await client.storage.from(this.bucket).upload(objectPath, parsed.buffer, {
-      contentType: parsed.contentType,
-      upsert: false,
-    });
+    const fileName = `${Date.now()}-${baseName}`;
+    const directory = path.join(UPLOAD_ROOT, folder);
+    const filePath = path.join(directory, fileName);
 
-    if (error) throw new AppError(500, error.message, error);
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(filePath, parsed.buffer);
 
-    const { data } = client.storage.from(this.bucket).getPublicUrl(objectPath);
-    return { url: data.publicUrl, path: objectPath, bucket: this.bucket };
-  }
-
-  private async ensureBucket() {
-    const client = getSupabaseAdminClient();
-    const { data } = await client.storage.getBucket(this.bucket);
-    if (data) return;
-
-    const { error } = await client.storage.createBucket(this.bucket, {
-      public: true,
-      fileSizeLimit: 3 * 1024 * 1024,
-      allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
-    });
-    if (error && !error.message.toLowerCase().includes("already exists")) {
-      throw new AppError(500, error.message, error);
-    }
+    const publicPath = `/uploads/${folder}/${fileName}`.replace(/\\/g, "/");
+    return { url: publicPath, path: publicPath, contentType: parsed.contentType };
   }
 }

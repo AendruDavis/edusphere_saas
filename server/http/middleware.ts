@@ -30,7 +30,7 @@ export function getBearerToken(req: Request) {
 export function requireAuth(authService = new AuthService()): RequestHandler {
   return asyncHandler(async (req, _res, next) => {
     const token = getBearerToken(req);
-    if (!token) throw new AppError(401, "Missing Supabase access token");
+    if (!token) throw new AppError(401, "Missing access token");
     req.currentUser = await authService.verifyToken(token);
     next();
   });
