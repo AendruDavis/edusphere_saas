@@ -32,3 +32,7 @@ For local backend development:
 5. Run `npm run dev` and log in with the seeded admin account.
 
 Hardware integration endpoints also require `INTEGRATION_WEBHOOK_SECRET` and expect it in the `x-integration-secret` header.
+
+## SSH Production Deployment
+
+Use [docs/SSH_DEPLOYMENT.md](docs/SSH_DEPLOYMENT.md) for the VPS/SSH deployment checklist with PostgreSQL, Nginx, and PM2.
