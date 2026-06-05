@@ -17,10 +17,12 @@ import {
 import { cn, formatCurrency } from "../lib/utils";
 import { apiRequest } from "../lib/api";
 import { useApp } from "../context/AppContext";
+import { useToast } from "../context/ToastContext";
 import { Transaction } from "../types";
 
 export default function Finance() {
   const { transactions, addTransaction, students, schoolSettings, expenses, addExpense } = useApp();
+  const toast = useToast();
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiInsight, setAiInsight] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "expenses" | "fees">("all");
@@ -495,7 +497,7 @@ export default function Finance() {
               <button 
                 onClick={() => {
                    const text = `Receipt for ${selectedTx.category}: ${formatCurrency(selectedTx.amount, schoolSettings.currency || "UGX")} - Verified by ${schoolSettings.name}`;
-                   alert(`Sharing receipt to student's contact: ${text}`);
+                   toast.info(`Sharing receipt to student's contact: ${text}`);
                 }}
                 className="flex-1 py-3 bg-blue-600 text-white font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-blue-700 transition-all active:scale-95"
               >

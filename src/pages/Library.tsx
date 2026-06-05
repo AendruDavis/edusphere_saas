@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApp } from "../context/AppContext";
+import { useToast } from "../context/ToastContext";
 
 interface Book {
   id: string;
@@ -35,6 +36,7 @@ interface Borrowing {
 
 export default function Library() {
   const { students, borrowings, addBorrowing, updateBorrowing, books, addBook } = useApp();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<"books" | "borrowing">("books");
   const [isBorrowModalOpen, setIsBorrowModalOpen] = useState(false);
   const [isBookModalOpen, setIsBookModalOpen] = useState(false);
@@ -89,7 +91,7 @@ export default function Library() {
 
   const handleConfirmLending = async () => {
     if (!selectedStudentId || !lendingForm.bookTitle) {
-      alert("Please select a student and book title.");
+      toast.warning("Please select a student and book title.");
       return;
     }
 

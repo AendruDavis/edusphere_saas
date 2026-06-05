@@ -3,6 +3,7 @@ import { AppError, assertFound } from "../domain/errors";
 import { canAccessRole, type AuthUser, type UserRole } from "../domain/roles";
 import { PostgresRepository, type RecordData } from "../infrastructure/postgresRepository";
 import { AuthService } from "../infrastructure/authService";
+import { query } from "../infrastructure/database";
 
 const DEFAULT_SETTINGS = {
   name: "EduSphere Academy",
@@ -34,6 +35,7 @@ const optionalRelationFields: Partial<Record<ResourceKey, string[]>> = {
 
 type CreateUserPayload = Parameters<AuthService["createUser"]>[0];
 type UpdateUserPayload = Parameters<AuthService["updateUser"]>[1];
+type MarkAction = "create" | "update" | "lock" | "unlock" | "delete";
 
 function requireRoles(user: AuthUser, roles: UserRole[]) {
   if (!canAccessRole(user, roles)) {
@@ -46,6 +48,55 @@ function normalizePayload(resource: ResourceKey, payload: RecordData) {
   for (const field of optionalRelationFields[resource] ?? []) {
     if (next[field] === "") next[field] = null;
   }
+  return next;
+}
+
+function scoreField(value: unknown) {
+  if (value === "" || value === null || value === undefined) return null;
+  const next = Number(value);
+  if (!Number.isFinite(next) || next < 0 || next > 100) {
+    throw new AppError(400, "Mark scores must be numbers between 0 and 100");
+  }
+  return Math.round(next * 100) / 100;
+}
+
+function average(values: Array<number | null>) {
+  const usable = values.filter((value): value is number => value !== null);
+  if (usable.length === 0) return null;
+  return Math.round((usable.reduce((sum, value) => sum + value, 0) / usable.length) * 100) / 100;
+}
+
+function normalizeMarkPayload(payload: RecordData, existing?: RecordData | null, user?: AuthUser) {
+  const next: RecordData = { ...payload };
+  delete next.date;
+
+  const a1 = scoreField(next.a1 ?? existing?.a1 ?? next.score);
+  const a2 = scoreField(next.a2 ?? existing?.a2 ?? next.score);
+  const a3 = scoreField(next.a3 ?? existing?.a3 ?? next.score);
+  const a4 = scoreField(next.a4 ?? existing?.a4 ?? next.score);
+  const avg = average([a1, a2, a3, a4]);
+  const idf = scoreField(next.idf ?? existing?.idf ?? avg ?? next.score);
+  const finalScore = avg === null && idf === null ? scoreField(next.score ?? existing?.score ?? 0) : Math.round((((avg ?? 0) * 0.2) + ((idf ?? 0) * 0.8)) * 100) / 100;
+
+  next.a1 = a1;
+  next.a2 = a2;
+  next.a3 = a3;
+  next.a4 = a4;
+  next.idf = idf;
+  next.score = finalScore;
+
+  if (next.locked === true && existing?.locked !== true) {
+    next.lockedAt = new Date().toISOString();
+    next.lockedBy = user?.id ?? null;
+    next.submittedAt = next.submittedAt ?? new Date().toISOString();
+    next.submittedBy = next.submittedBy ?? user?.id ?? null;
+  }
+
+  if (next.locked === false) {
+    next.lockedAt = null;
+    next.lockedBy = null;
+  }
+
   return next;
 }
 
@@ -96,6 +147,10 @@ export class AppService {
       return this.recordTransaction(user, normalizedPayload);
     }
 
+    if (resource === "marks") {
+      return this.createMark(user, normalizedPayload);
+    }
+
     if (resource === "expenses") {
       return this.recordExpense(user, normalizedPayload);
     }
@@ -124,6 +179,10 @@ export class AppService {
       return this.authService.updateUser(id, normalizedPayload as UpdateUserPayload);
     }
 
+    if (resource === "marks") {
+      return this.updateMark(user, id, normalizedPayload);
+    }
+
     if (resource === "dormAllocations" && normalizedPayload.status === "checked-out") {
       const existing = await this.repository.getById(config.table, id);
       const updated = await this.repository.update(config.table, id, normalizedPayload);
@@ -142,6 +201,10 @@ export class AppService {
 
     if (resource === "users") {
       return this.authService.deleteUser(id);
+    }
+
+    if (resource === "marks") {
+      return this.deleteMark(user, id);
     }
 
     if (resource === "dormRooms") {
@@ -167,6 +230,57 @@ export class AppService {
   async recordAttendance(user: AuthUser, payload: RecordData) {
     requireRoles(user, ["admin", "teacher", "nurse"]);
     return this.repository.create("attendance_records", payload);
+  }
+
+  private async createMark(user: AuthUser, payload: RecordData) {
+    const normalized = normalizeMarkPayload(payload, null, user);
+    const mark = await this.repository.create("marks", normalized);
+    await this.auditMark("create", mark, null, mark, user);
+    return mark;
+  }
+
+  private async updateMark(user: AuthUser, id: string, payload: RecordData) {
+    const existing = assertFound(await this.repository.getById("marks", id), "Mark not found");
+    const isUnlock = payload.locked === false && existing.locked === true;
+    if (existing.locked && user.role !== "admin" && !isUnlock) {
+      throw new AppError(423, "This mark has been locked after submission");
+    }
+    if (isUnlock && user.role !== "admin") {
+      throw new AppError(403, "Only administrators can unlock submitted marks");
+    }
+
+    const normalized = normalizeMarkPayload(payload, existing, user);
+    const updated = await this.repository.update("marks", id, normalized);
+    const action = existing.locked !== true && updated.locked === true ? "lock" : existing.locked === true && updated.locked !== true ? "unlock" : "update";
+    await this.auditMark(action, updated, existing, updated, user);
+    return updated;
+  }
+
+  private async deleteMark(user: AuthUser, id: string) {
+    const existing = assertFound(await this.repository.getById("marks", id), "Mark not found");
+    if (existing.locked && user.role !== "admin") {
+      throw new AppError(423, "This mark has been locked after submission");
+    }
+    await this.auditMark("delete", existing, existing, null, user);
+    return this.repository.delete("marks", id);
+  }
+
+  private async auditMark(action: MarkAction, mark: RecordData, oldValue: RecordData | null, newValue: RecordData | null, user: AuthUser) {
+    await query(
+      `insert into "mark_audit_logs" ("markId", "studentId", subject, term, year, action, "changedBy", "oldValue", "newValue")
+       values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb)`,
+      [
+        mark.id,
+        mark.studentId,
+        mark.subject,
+        mark.term,
+        mark.year,
+        action,
+        user.id,
+        oldValue ? JSON.stringify(oldValue) : null,
+        newValue ? JSON.stringify(newValue) : null,
+      ],
+    );
   }
 
   async recordBiometricCheckIn(secret: string | undefined, payload: RecordData) {

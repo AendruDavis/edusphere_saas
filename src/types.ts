@@ -71,9 +71,20 @@ export interface Mark {
   studentId: string;
   subject: string;
   score: number;
+  a1?: number | null;
+  a2?: number | null;
+  a3?: number | null;
+  a4?: number | null;
+  idf?: number | null;
   term: string;
   year: string;
   comment?: string;
+  teacherInitials?: string | null;
+  locked?: boolean;
+  lockedAt?: string | null;
+  lockedBy?: string | null;
+  submittedAt?: string | null;
+  submittedBy?: string | null;
 }
 
 export interface Product {

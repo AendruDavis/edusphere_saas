@@ -1,33 +1,22 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { 
-  Users, 
-  GraduationCap, 
-  Wallet, 
-  TrendingUp,
-  ArrowUpRight,
-  ArrowDownRight,
+import {
   Activity,
-  Calendar as CalendarIcon,
-  Bus,
-  Clock,
+  ArrowDownRight,
+  ArrowUpRight,
   Award,
-  ChevronRight
+  Bus,
+  Calendar as CalendarIcon,
+  ChevronRight,
+  Clock,
+  GraduationCap,
+  TrendingUp,
+  Users,
+  Wallet,
 } from "lucide-react";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { cn, formatCurrency } from "../lib/utils";
 import { useApp } from "../context/AppContext";
-import { 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  Cell
-} from "recharts";
 
 const data = [
   { name: "Jan", revenue: 4000, students: 2400 },
@@ -38,190 +27,140 @@ const data = [
   { name: "Jun", revenue: 2390, students: 3800 },
 ];
 
-const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444"];
+function toneClasses(color: string) {
+  switch (color) {
+    case "emerald":
+      return "bg-emerald-50 text-emerald-700";
+    case "amber":
+      return "bg-amber-50 text-amber-700";
+    case "rose":
+      return "bg-rose-50 text-rose-700";
+    default:
+      return "bg-blue-50 text-blue-700";
+  }
+}
 
 export default function Dashboard() {
   const { schoolSettings, currentUser, students, users, healthRecords, vehicles, timetableEntries, getClassFees } = useApp();
-  
+
   const totalOutstandingFees = React.useMemo(() => {
-    return students.reduce((sum, s) => {
-      const expected = getClassFees(s.class);
-      return sum + Math.max(0, expected - s.totalFeesPaid);
+    return students.reduce((sum, student) => {
+      const expected = getClassFees(student.class);
+      return sum + Math.max(0, expected - student.totalFeesPaid);
     }, 0);
   }, [students, getClassFees]);
-  
-  const stats = React.useMemo(() => [
-    { label: "Enrolled Students", value: students.length.toLocaleString(), icon: GraduationCap, trend: "+12%", color: "blue", href: "/students" },
-    { label: "Active Faculty", value: users.length.toLocaleString(), icon: Users, trend: "+3%", color: "emerald", href: "/staff" },
-    { label: "Treasury Arrears", value: formatCurrency(totalOutstandingFees, schoolSettings.currency || "UGX"), icon: Wallet, trend: "+8%", color: "amber", href: "/fees" },
-    { label: "Health Protocol", value: healthRecords.filter(r => r.status === "sick").length.toLocaleString(), icon: Activity, trend: "-0.5%", color: "rose", href: "/sick-bay" },
-  ], [students.length, users.length, totalOutstandingFees, schoolSettings.currency, healthRecords]);
+
+  const stats = React.useMemo(
+    () => [
+      { label: "Students", value: students.length.toLocaleString(), icon: GraduationCap, trend: "+12%", color: "blue", href: "/students" },
+      { label: "Staff Accounts", value: users.length.toLocaleString(), icon: Users, trend: "+3%", color: "emerald", href: "/staff" },
+      { label: "Outstanding Fees", value: formatCurrency(totalOutstandingFees, schoolSettings.currency || "UGX"), icon: Wallet, trend: "+8%", color: "amber", href: "/fees" },
+      { label: "Sick Bay Cases", value: healthRecords.filter((record) => record.status === "sick").length.toLocaleString(), icon: Activity, trend: "-0.5%", color: "rose", href: "/sick-bay" },
+    ],
+    [students.length, users.length, totalOutstandingFees, schoolSettings.currency, healthRecords],
+  );
 
   return (
-    <div className="space-y-8 pb-10 animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="app-page">
+      <div className="app-page-header">
         <div>
-          <h2 className="text-3xl font-black text-gray-900 tracking-tight">School Overview</h2>
-          <p className="text-gray-500 text-sm font-medium">Welcome back, {currentUser?.name}. Monitoring {schoolSettings.name}'s performance.</p>
+          <p className="app-page-kicker">Today at {schoolSettings.name}</p>
+          <h2 className="app-page-title">School Overview</h2>
+          <p className="app-page-subtitle">Welcome back, {currentUser?.name}. Key operations are summarized for quick decisions.</p>
         </div>
-        <div className="flex items-center gap-3">
-          <button className="webapp-card px-4 py-2 flex items-center gap-2 text-xs font-black uppercase tracking-widest bg-white">
-            <CalendarIcon className="w-4 h-4 text-blue-600" />
-            {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-          </button>
-          <button className="webapp-btn-primary !px-5 !py-3 !text-[10px]">
-            Export Report
-          </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="app-button-secondary">
+            <CalendarIcon className="h-4 w-4 text-blue-600" />
+            {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+          </div>
+          <button className="app-button-primary">Export report</button>
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
-          <Link key={stat.label} to={stat.href} className="webapp-card p-6 group overflow-hidden relative">
-            <div className="flex items-center justify-between mb-4">
-              <div className={cn(
-                "p-3 rounded-2xl transition-transform group-hover:scale-110 duration-300 shadow-sm",
-                stat.color === "blue" ? "bg-blue-50 text-blue-600 shadow-blue-50" :
-                stat.color === "emerald" ? "bg-emerald-50 text-emerald-600 shadow-emerald-50" :
-                stat.color === "amber" ? "bg-amber-50 text-amber-600 shadow-amber-50" :
-                "bg-rose-50 text-rose-600 shadow-rose-50"
-              )}>
-                <stat.icon className="w-6 h-6" />
+          <Link key={stat.label} to={stat.href} className="app-card group">
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <div className={cn("rounded-xl p-2.5", toneClasses(stat.color))}>
+                <stat.icon className="h-5 w-5" />
               </div>
-              <span className={cn(
-                "flex items-center text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider",
-                stat.trend.startsWith("+") ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
-              )}>
-                {stat.trend.startsWith("+") ? <ArrowUpRight className="w-3 h-3 mr-1" /> : <ArrowDownRight className="w-3 h-3 mr-1" />}
+              <span className={cn("app-badge", stat.trend.startsWith("+") ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700")}>
+                {stat.trend.startsWith("+") ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
                 {stat.trend}
               </span>
             </div>
-            <div>
-              <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">{stat.label}</p>
-              <h3 className="text-2xl font-black text-gray-900 mt-1 tracking-tight">{stat.value}</h3>
-            </div>
-            <div className="absolute bottom-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
-              <ChevronRight className="w-5 h-5 text-gray-300" />
+            <p className="text-sm font-medium text-slate-500">{stat.label}</p>
+            <div className="mt-1 flex items-end justify-between gap-3">
+              <h3 className="text-2xl font-semibold tracking-tight text-slate-950">{stat.value}</h3>
+              <ChevronRight className="h-4 w-4 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-500" />
             </div>
           </Link>
         ))}
       </div>
 
-      {/* Integration Widgets Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Today's Timetable Container */}
-        <Link to="/timetable" className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-xl transition-all group">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-blue-50 rounded-2xl text-blue-600">
-                <Clock className="w-6 h-6" />
-              </div>
-              <h3 className="text-lg font-black text-gray-900 tracking-tight">Class Schedule</h3>
-            </div>
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Today</span>
-          </div>
-          <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+        <Link to="/timetable" className="app-card">
+          <SectionHeader icon={Clock} title="Class Schedule" meta="Today" />
+          <div className="mt-5 space-y-3">
             {timetableEntries.length > 0 ? (
-              timetableEntries.slice(0, 3).map((e, i) => (
-                <div key={i} className="flex items-center gap-4 p-3 bg-gray-50 rounded-2xl border border-transparent hover:border-blue-100 transition-all">
-                  <span className="text-[10px] font-black text-blue-600 w-12">{e.startTime}</span>
-                  <div className="flex-1">
-                    <p className="text-sm font-black text-gray-900">{e.subject}</p>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase">{e.className} • Room {e.room}</p>
+              timetableEntries.slice(0, 3).map((entry) => (
+                <div key={entry.id} className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-3">
+                  <span className="w-14 text-xs font-semibold text-blue-700">{entry.startTime}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-950">{entry.subject}</p>
+                    <p className="truncate text-xs text-slate-500">{entry.class} / Room {entry.room}</p>
                   </div>
                 </div>
               ))
             ) : (
-              <div className="py-10 text-center">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">No classes scheduled</p>
-              </div>
+              <div className="app-empty-state">No classes scheduled for today.</div>
             )}
-            <button className="w-full py-3 rounded-2xl border border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-widest group-hover:text-blue-600 group-hover:bg-blue-50 transition-all">
-              Full Timetable
-            </button>
           </div>
         </Link>
 
-        {/* Transport Status Container */}
-        <Link to="/transport" className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-xl transition-all group">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600 text-bus-pulse">
-                <Bus className="w-6 h-6" />
-              </div>
-              <h3 className="text-lg font-black text-gray-900 tracking-tight">Fleet Tracking</h3>
-            </div>
-            <div className="flex items-center gap-1.5 py-1 px-2 bg-emerald-50 rounded-lg">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[8px] font-black text-emerald-600 uppercase">Live</span>
-            </div>
+        <Link to="/transport" className="app-card">
+          <SectionHeader icon={Bus} title="Fleet Status" meta="Live" />
+          <div className="mt-5 space-y-3">
+            {vehicles.length > 0 ? (
+              vehicles.slice(0, 2).map((vehicle) => (
+                <div key={vehicle.id} className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-950">{vehicle.plateNumber}</p>
+                    <p className="text-xs text-slate-500">{vehicle.driverName || "Driver unassigned"}</p>
+                  </div>
+                  <span className={cn("app-badge capitalize", vehicle.status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>{vehicle.status}</span>
+                </div>
+              ))
+            ) : (
+              <div className="app-empty-state">No active vehicles.</div>
+            )}
           </div>
-          <div className="space-y-4">
-            {vehicles.slice(0, 2).map((v, i) => (
-              <div key={i} className="flex items-center gap-4 p-4 bg-gray-900 rounded-3xl text-white relative overflow-hidden group/bus">
-                <div className="absolute top-0 right-0 w-24 h-full bg-white/5 skew-x-12 -translate-x-12" />
-                <div>
-                   <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">{v.plateNumber}</p>
-                   <p className="text-sm font-black text-white">{v.driverName}</p>
-                   <p className="text-[9px] font-medium text-gray-400 mt-1 uppercase">On Route</p>
-                </div>
-                <div className="ml-auto text-right">
-                   <p className="text-xl font-black text-white">45 <span className="text-[10px] text-gray-400">km/h</span></p>
-                   <p className="text-[8px] font-black text-emerald-500 uppercase tracking-tighter">On-Time</p>
-                </div>
-              </div>
+        </Link>
+
+        <Link to="/grades" className="app-card">
+          <SectionHeader icon={Award} title="Academic Performance" meta="Current term" />
+          <div className="mt-6 flex h-32 items-end gap-2">
+            {[40, 65, 52, 85, 78, 92].map((height, index) => (
+              <div key={index} className="flex-1 rounded-t-lg bg-blue-100 transition-colors hover:bg-blue-500" style={{ height: `${height}%` }} />
             ))}
-            {vehicles.length === 0 && (
-              <div className="py-10 text-center">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">No vehicles active</p>
-              </div>
-            )}
-            <button className="w-full py-3 rounded-2xl border border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-widest group-hover:text-emerald-600 group-hover:bg-emerald-50 transition-all">
-              Launch Tracking Map
-            </button>
           </div>
-        </Link>
-
-        {/* Global Academic Performance */}
-        <Link to="/grades" className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-xl transition-all group lg:col-span-1">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600">
-                <Award className="w-6 h-6" />
-              </div>
-              <h3 className="text-lg font-black text-gray-900 tracking-tight">Academic Performance</h3>
-            </div>
-            <TrendingUp className="w-5 h-5 text-emerald-500" />
-          </div>
-          <div className="space-y-6">
-            <div className="flex items-end justify-between px-1 h-32 gap-2">
-               {[40, 65, 52, 85, 78, 92].map((h, i) => (
-                 <div key={i} className="flex-1 bg-indigo-100 rounded-t-xl relative group/bar hover:bg-indigo-600 transition-all duration-300" style={{ height: `${h}%` }}>
-                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[8px] font-black text-indigo-600 opacity-0 group-hover/bar:opacity-100 transition-opacity">
-                      {h}%
-                    </div>
-                 </div>
-               ))}
-            </div>
-            <div className="p-4 bg-indigo-600 rounded-3xl text-white">
-               <div className="flex justify-between items-center">
-                  <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Current General GPA</p>
-                  <span className="text-xl font-black">78.4%</span>
-               </div>
-            </div>
+          <div className="mt-5 flex items-center justify-between rounded-xl bg-blue-50 px-4 py-3 text-blue-800">
+            <p className="text-sm font-semibold">General average</p>
+            <span className="text-lg font-semibold">78.4%</span>
           </div>
         </Link>
       </div>
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-gray-900">Revenue & Enrollment</h3>
-            <select className="bg-gray-50 border-gray-200 rounded-lg text-xs font-medium focus:ring-blue-500">
-              <option>Last 6 Months</option>
-              <option>Last Year</option>
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+        <div className="app-panel xl:col-span-2">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-950">Revenue & Enrollment</h3>
+              <p className="text-sm text-slate-500">Six-month trend from recorded school activity.</p>
+            </div>
+            <select className="app-select max-w-40">
+              <option>Last 6 months</option>
+              <option>Last year</option>
             </select>
           </div>
           <div className="h-[300px]">
@@ -229,57 +168,63 @@ export default function Dashboard() {
               <AreaChart data={data}>
                 <defs>
                   <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.12} />
+                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: "#94a3b8", fontSize: 12}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: "#94a3b8", fontSize: 12}} />
-                <Tooltip 
-                  contentStyle={{ border: 'none', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                  cursor={{ stroke: '#3b82f6', strokeWidth: 2 }}
-                />
-                <Area type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorRev)" />
-                <Area type="monotone" dataKey="students" stroke="#10b981" strokeWidth={3} fill="transparent" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 12 }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 12 }} />
+                <Tooltip contentStyle={{ border: "1px solid #e2e8f0", borderRadius: "12px", boxShadow: "0 12px 30px rgb(15 23 42 / 0.08)" }} />
+                <Area type="monotone" dataKey="revenue" stroke="#2563eb" strokeWidth={3} fillOpacity={1} fill="url(#colorRev)" />
+                <Area type="monotone" dataKey="students" stroke="#059669" strokeWidth={3} fill="transparent" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-          <h3 className="text-lg font-bold text-gray-900 mb-6">Class Occupancy</h3>
-          <div className="space-y-4">
+        <div className="app-panel">
+          <h3 className="text-lg font-semibold text-slate-950">Class Occupancy</h3>
+          <div className="mt-5 space-y-4">
             {[
-              { label: "Grade 10-A", value: 92, color: "#3b82f6" },
-              { label: "Grade 12-B", value: 45, color: "#f59e0b" },
-              { label: "Grade 8-C", value: 78, color: "#10b981" },
-              { label: "Grade 11-A", value: 64, color: "#ef4444" },
+              { label: "Senior 1", value: 92 },
+              { label: "Senior 2", value: 45 },
+              { label: "Senior 3", value: 78 },
+              { label: "Senior 4", value: 64 },
             ].map((item) => (
               <div key={item.label} className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600 font-medium">{item.label}</span>
-                  <span className="text-gray-900 font-bold">{item.value}%</span>
+                  <span className="font-medium text-slate-600">{item.label}</span>
+                  <span className="font-semibold text-slate-950">{item.value}%</span>
                 </div>
-                <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full transition-all duration-500" 
-                    style={{ width: `${item.value}%`, backgroundColor: item.color }} 
-                  />
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div className="h-full rounded-full bg-blue-600 transition-all duration-500" style={{ width: `${item.value}%` }} />
                 </div>
               </div>
             ))}
           </div>
-          <div className="mt-8 p-4 bg-blue-50 rounded-xl border border-blue-100">
+          <div className="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-4">
             <div className="flex gap-3">
-              <TrendingUp className="w-5 h-5 text-blue-600 flex-shrink-0" />
-              <p className="text-xs text-blue-700 leading-relaxed">
-                <span className="font-bold">Insight:</span> Enrollment is up 12% compared to last semester. Consider opening new sections for Grade 12.
-              </p>
+              <TrendingUp className="h-5 w-5 shrink-0 text-blue-700" />
+              <p className="text-sm leading-6 text-blue-800">Enrollment is trending upward. Review classes above 85% before next intake.</p>
             </div>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function SectionHeader({ icon: Icon, title, meta }: { icon: React.ElementType; title: string; meta: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3">
+        <div className="rounded-xl bg-blue-50 p-2.5 text-blue-700">
+          <Icon className="h-5 w-5" />
+        </div>
+        <h3 className="text-base font-semibold text-slate-950">{title}</h3>
+      </div>
+      <span className="text-xs font-semibold text-slate-500">{meta}</span>
     </div>
   );
 }

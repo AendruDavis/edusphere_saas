@@ -15,9 +15,11 @@ import {
 import { cn, formatCurrency } from "../lib/utils";
 import { useApp } from "../context/AppContext";
 import { uploadDataUrlAsset } from "../lib/api";
+import { useToast } from "../context/ToastContext";
 
 export default function Settings() {
   const { schoolSettings, setSchoolSettings, users, updateUser } = useApp();
+  const toast = useToast();
   const [isCompressing, setIsCompressing] = useState(false);
   const [newGrade, setNewGrade] = useState({ min: 0, grade: "A", comment: "Excellent" });
   const [localSettings, setLocalSettings] = useState({
@@ -124,7 +126,7 @@ export default function Settings() {
       academicYear: localSettings.academicYear,
       classFees: localSettings.classFees
     });
-    alert("Settings saved successfully!");
+    toast.success("Settings saved successfully.");
   };
 
   const handleLevelChange = (level: "Primary" | "Secondary") => {

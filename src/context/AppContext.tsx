@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { apiRequest, clearAuthSession, getAccessToken, setAuthSession } from "../lib/api";
+import { useToast } from "./ToastContext";
 import {
   AppNotification,
   AttendanceRecord,
@@ -201,6 +202,7 @@ function emptySnapshot(settings = DEFAULT_SETTINGS): AppSnapshot {
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const toast = useToast();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [snapshot, setSnapshot] = useState<AppSnapshot>(() => emptySnapshot());
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -268,7 +270,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = async () => {
-    alert("Google SSO can be added later through a backend OAuth provider. Credential login is active.");
+    toast.info("Google SSO can be added later. Credential login is active for now.");
   };
 
   const loginWithCredentials = async (email: string, pass: string, role: string) => {
@@ -282,7 +284,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setCurrentUser(session.user);
       await refreshData();
     } catch (err: any) {
-      alert(err.message || "Credential login failed");
+      toast.error(err.message || "Credential login failed");
       throw err;
     } finally {
       setIsLoggingIn(false);
