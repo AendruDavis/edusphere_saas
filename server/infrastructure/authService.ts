@@ -80,11 +80,7 @@ function verifyPassword(password: string, storedHash: string) {
 }
 
 export class AuthService {
-  async signIn(email: string, password: string, requestedRole: string) {
-    if (!isUserRole(requestedRole)) {
-      throw new AppError(400, "Invalid role");
-    }
-
+  async signIn(email: string, password: string) {
     const result = await query<{ id: string; passwordHash: string }>(
       `select id, "passwordHash" from users where email = $1 limit 1`,
       [normalizeEmail(email)],
@@ -95,10 +91,6 @@ export class AuthService {
     }
 
     const profile = await this.loadProfile(user.id);
-    if (profile.role !== requestedRole) {
-      throw new AppError(403, "This account does not have the selected role");
-    }
-
     const session = signToken(user.id);
     return {
       accessToken: session.token,

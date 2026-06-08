@@ -21,7 +21,7 @@ export function registerBackendRoutes(app: Express, genAI: GoogleGenAI | null) {
     "/api/auth/login",
     asyncHandler(async (req, res) => {
       const input = loginSchema.parse(req.body);
-      res.json(await authService.signIn(input.email, input.pass, input.role));
+      res.json(await authService.signIn(input.email, input.pass));
     }),
   );
 

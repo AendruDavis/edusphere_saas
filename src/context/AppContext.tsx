@@ -100,7 +100,7 @@ interface AppContextType {
   addNotification: (notification: Omit<AppNotification, "id">) => Promise<void>;
   markNotificationRead: (id: string) => Promise<void>;
   login: () => Promise<void>;
-  loginWithCredentials: (email: string, pass: string, role: string) => Promise<void>;
+  loginWithCredentials: (email: string, pass: string) => Promise<void>;
   logout: () => Promise<void>;
   isLoggingIn: boolean;
 }
@@ -273,12 +273,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     toast.info("Google SSO can be added later. Credential login is active for now.");
   };
 
-  const loginWithCredentials = async (email: string, pass: string, role: string) => {
+  const loginWithCredentials = async (email: string, pass: string) => {
     setIsLoggingIn(true);
     try {
       const session = await apiRequest<{ accessToken: string; refreshToken?: string; user: User }>("/api/auth/login", {
         method: "POST",
-        json: { email, pass, role },
+        json: { email, pass },
       });
       setAuthSession(session);
       setCurrentUser(session.user);

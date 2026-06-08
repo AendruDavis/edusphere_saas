@@ -6,7 +6,6 @@ export const roleSchema = z.enum(USER_ROLES);
 export const loginSchema = z.object({
   email: z.string().trim().email(),
   pass: z.string().min(1),
-  role: roleSchema,
 });
 
 export const userCreateSchema = z.object({
