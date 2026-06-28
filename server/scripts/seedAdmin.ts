@@ -32,6 +32,18 @@ async function main() {
   const userId = userResult.rows[0].id;
   await query(`update user_roles set active = false, "updatedAt" = now() where "userId" = $1 and active = true`, [userId]);
   await query(`insert into user_roles ("userId", role, active, "assignedAt") values ($1, 'admin', true, now())`, [userId]);
+  const schoolResult = await query<{ id: string }>(
+    `select id from schools where active = true order by "createdAt" limit 1`,
+  );
+  const schoolId = schoolResult.rows[0]?.id;
+  if (!schoolId) throw new Error("No school exists. Run npm run migrate:db first.");
+  await query(
+    `insert into school_memberships ("schoolId", "userId", role, active)
+     values ($1, $2, 'admin', true)
+     on conflict ("schoolId", "userId")
+     do update set role = 'admin', active = true, "updatedAt" = now()`,
+    [schoolId, userId],
+  );
 
   console.log(`Admin user ready: ${email}`);
 }

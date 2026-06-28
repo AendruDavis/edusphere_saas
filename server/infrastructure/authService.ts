@@ -2,6 +2,7 @@ import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypt
 import { AppError, assertFound } from "../domain/errors";
 import { isUserRole, type AuthUser, type UserRole } from "../domain/roles";
 import { query } from "./database";
+import type { SchoolMembership, TenantContext } from "../domain/tenancy";
 
 type CreateUserInput = {
   name: string;
@@ -105,6 +106,40 @@ export class AuthService {
     return this.loadProfile(payload.sub);
   }
 
+  async listSchoolMemberships(userId: string): Promise<SchoolMembership[]> {
+    const result = await query<{
+      schoolId: string;
+      schoolName: string;
+      schoolSlug: string;
+      role: string;
+    }>(
+      `select sm."schoolId", s.name as "schoolName", s.slug as "schoolSlug", sm.role
+       from school_memberships sm
+       join schools s on s.id = sm."schoolId" and s.active = true
+       where sm."userId" = $1 and sm.active = true
+       order by s.name`,
+      [userId],
+    );
+
+    return result.rows.flatMap((membership) =>
+      isUserRole(membership.role) ? [{ ...membership, role: membership.role }] : [],
+    );
+  }
+
+  async resolveTenant(userId: string, schoolId: string): Promise<TenantContext> {
+    const result = await query<{ role: string }>(
+      `select sm.role
+       from school_memberships sm
+       join schools s on s.id = sm."schoolId" and s.active = true
+       where sm."userId" = $1 and sm."schoolId" = $2 and sm.active = true
+       limit 1`,
+      [userId, schoolId],
+    );
+    const membership = assertFound(result.rows[0], "You do not have access to this school");
+    if (!isUserRole(membership.role)) throw new AppError(403, "School membership role is invalid");
+    return { schoolId, userId, role: membership.role };
+  }
+
   async loadProfile(userId: string): Promise<AuthUser> {
     const result = await query(
       `select u.id, u.name, u.email, coalesce(ur.role, u.role) as role
@@ -123,7 +158,7 @@ export class AuthService {
     return { ...profile, role: profile.role };
   }
 
-  async createUser(input: CreateUserInput) {
+  async createUser(input: CreateUserInput, schoolId: string) {
     const email = normalizeEmail(input.email);
     const result = await query(
       `insert into users (name, email, role, "passwordHash", photo, dept)
@@ -133,10 +168,16 @@ export class AuthService {
     );
     const user = result.rows[0];
     await this.assignActiveRole(String(user.id), input.role);
+    await query(
+      `insert into school_memberships ("schoolId", "userId", role)
+       values ($1, $2, $3)
+       on conflict ("schoolId", "userId") do update set role = excluded.role, active = true, "updatedAt" = now()`,
+      [schoolId, user.id, input.role],
+    );
     return user;
   }
 
-  async updateUser(id: string, input: UpdateUserInput) {
+  async updateUser(id: string, input: UpdateUserInput, schoolId?: string) {
     const updates: Record<string, unknown> = {
       ...input,
       email: input.email ? normalizeEmail(input.email) : undefined,
@@ -156,6 +197,13 @@ export class AuthService {
 
     if (input.role) {
       await this.assignActiveRole(id, input.role);
+      if (schoolId) {
+        await query(
+          `update school_memberships set role = $3, "updatedAt" = now()
+           where "schoolId" = $1 and "userId" = $2`,
+          [schoolId, id, input.role],
+        );
+      }
     }
 
     return result.rows[0];
@@ -163,6 +211,15 @@ export class AuthService {
 
   async deleteUser(id: string) {
     await query(`delete from users where id = $1`, [id]);
+    return { success: true };
+  }
+
+  async removeUserFromSchool(id: string, schoolId: string) {
+    await query(
+      `update school_memberships set active = false, "updatedAt" = now()
+       where "userId" = $1 and "schoolId" = $2`,
+      [id, schoolId],
+    );
     return { success: true };
   }
 

@@ -23,12 +23,24 @@ import {
 } from "lucide-react";
 import { cn, formatCurrency } from "../lib/utils";
 import { useApp } from "../context/AppContext";
+import { apiRequest } from "../lib/api";
+
+type StudentStatusSummary = {
+  daysAttended: number;
+  expectedSchoolDays: number;
+  feesBalance: number;
+  sicknessStatus: string;
+  lastSickbayVisit: string | null;
+  booksBorrowed: number;
+  borrowedBookTitles: string[];
+};
 
 export default function StudentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { students, borrowings, healthRecords, schoolSettings, getClassFees, transactions } = useApp();
   const [activeTab, setActiveTab] = useState<"overview" | "fees" | "library" | "health">("overview");
+  const [statusSummary, setStatusSummary] = useState<StudentStatusSummary | null>(null);
 
   // Find the current student from context or use a fallback for mock display
   const foundStudent = students.find(s => s.id === id);
@@ -39,6 +51,15 @@ export default function StudentDetail() {
   const expectedFees = foundStudent ? getClassFees(foundStudent.class) : 0;
   const paidFees = foundStudent ? foundStudent.totalFeesPaid : 0;
   const balanceFees = expectedFees - paidFees;
+
+  React.useEffect(() => {
+    if (!id) return;
+    apiRequest<StudentStatusSummary>(
+      `/api/students/${id}/status-summary?term=${encodeURIComponent("Term 1")}&year=${encodeURIComponent(schoolSettings.academicYear || "2026/2027")}`,
+    )
+      .then(setStatusSummary)
+      .catch(() => setStatusSummary(null));
+  }, [id, schoolSettings.academicYear]);
 
   const student = {
     id: foundStudent?.id || id,
@@ -114,6 +135,23 @@ export default function StudentDetail() {
           </button>
         </div>
       </div>
+
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          { label: "Fees Balance", value: formatCurrency(statusSummary?.feesBalance ?? student.fees.balance, schoolSettings.currency || "UGX"), dot: "bg-rose-500" },
+          { label: "Books Borrowed", value: String(statusSummary?.booksBorrowed ?? studentBorrowings.filter((item) => item.status === "active").length), dot: "bg-amber-500" },
+          { label: "Sickness Status", value: statusSummary?.sicknessStatus ?? (studentHealth[0]?.status || "Cleared"), dot: "bg-emerald-500" },
+          { label: "Days Attended", value: `${statusSummary?.daysAttended ?? 0}/${statusSummary?.expectedSchoolDays || "-"}`, dot: "bg-blue-500" },
+        ].map((item) => (
+          <div key={item.label} className="app-card flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{item.label}</p>
+              <p className="mt-1 text-lg font-semibold text-slate-950">{item.value}</p>
+            </div>
+            <span className={cn("h-3 w-3 rounded-full", item.dot)} />
+          </div>
+        ))}
+      </section>
 
       {/* Tabs */}
       <div className="flex border-b border-gray-100 overflow-x-auto scroller-hide">

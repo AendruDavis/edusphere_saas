@@ -4,6 +4,7 @@ import {
   Bell,
   BookOpen,
   BrainCircuit,
+  Building2,
   Bus,
   Calendar,
   DollarSign,
@@ -86,7 +87,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const location = useLocation();
-  const { schoolSettings, students, users, transactions, books, products, currentUser, logout, notifications } = useApp();
+  const {
+    schoolSettings,
+    students,
+    users,
+    transactions,
+    books,
+    products,
+    currentUser,
+    logout,
+    notifications,
+    schools,
+    activeSchoolId,
+    setActiveSchool,
+  } = useApp();
 
   const suggestions = React.useMemo(() => {
     if (!searchQuery.trim()) return [];
@@ -260,6 +274,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <Bell className="h-5 w-5" />
             {unreadCount > 0 && <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border-2 border-white bg-rose-500" />}
           </button>
+          {currentUser?.role === "admin" && schools.length > 1 && (
+            <label className="relative hidden md:block">
+              <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <select
+                aria-label="Active school"
+                className="app-select h-10 max-w-56 appearance-none pl-9 pr-8"
+                value={activeSchoolId || ""}
+                onChange={(event) => void setActiveSchool(event.target.value)}
+              >
+                {schools.map((school) => (
+                  <option key={school.schoolId} value={school.schoolId}>{school.schoolName}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <div className="hidden items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 sm:flex">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
             <span className="text-sm font-semibold capitalize text-slate-700">{currentUser?.role || "Guest"}</span>

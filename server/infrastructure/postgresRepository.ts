@@ -25,18 +25,18 @@ function preparePayload<T extends RecordData>(payload: T) {
 }
 
 export class PostgresRepository {
-  async list(table: string) {
-    const result = await query(`select * from ${tableName(table)} order by "createdAt" desc`);
+  async list(table: string, schoolId: string) {
+    const result = await query(`select * from ${tableName(table)} where "schoolId" = $1 order by "createdAt" desc`, [schoolId]);
     return result.rows;
   }
 
-  async getById(table: string, id: string) {
-    const result = await query(`select * from ${tableName(table)} where id = $1 limit 1`, [id]);
+  async getById(table: string, id: string, schoolId: string) {
+    const result = await query(`select * from ${tableName(table)} where id = $1 and "schoolId" = $2 limit 1`, [id, schoolId]);
     return result.rows[0] ?? null;
   }
 
-  async create<T extends RecordData>(table: string, payload: T) {
-    const clean = preparePayload(payload);
+  async create<T extends RecordData>(table: string, payload: T, schoolId: string) {
+    const clean = preparePayload({ ...payload, schoolId });
     const keys = Object.keys(clean);
     const columns = keys.map(quoteIdent).join(", ");
     const placeholders = keys.map((_, index) => `$${index + 1}`).join(", ");
@@ -48,43 +48,55 @@ export class PostgresRepository {
     return result.rows[0];
   }
 
-  async update<T extends RecordData>(table: string, id: string, payload: T) {
+  async update<T extends RecordData>(table: string, id: string, payload: T, schoolId: string) {
     const clean = preparePayload({ ...payload, updatedAt: new Date().toISOString() });
     const keys = Object.keys(clean);
     const assignments = keys.map((key, index) => `${quoteIdent(key)} = $${index + 1}`).join(", ");
     const values = keys.map((key) => clean[key]);
     const result = await query(
-      `update ${tableName(table)} set ${assignments} where id = $${keys.length + 1} returning *`,
-      [...values, id],
+      `update ${tableName(table)} set ${assignments} where id = $${keys.length + 1} and "schoolId" = $${keys.length + 2} returning *`,
+      [...values, id, schoolId],
     );
     return result.rows[0];
   }
 
-  async delete(table: string, id: string) {
-    await query(`delete from ${tableName(table)} where id = $1`, [id]);
+  async delete(table: string, id: string, schoolId: string) {
+    await query(`delete from ${tableName(table)} where id = $1 and "schoolId" = $2`, [id, schoolId]);
     return { success: true };
   }
 
-  async upsertSettings(payload: RecordData) {
-    const clean = preparePayload({ id: true, ...payload, updatedAt: new Date().toISOString() });
+  async upsertSettings(payload: RecordData, schoolId: string) {
+    const clean = preparePayload({ id: true, ...payload, schoolId, updatedAt: new Date().toISOString() });
     const keys = Object.keys(clean);
     const columns = keys.map(quoteIdent).join(", ");
     const placeholders = keys.map((_, index) => `$${index + 1}`).join(", ");
     const updates = keys
-      .filter((key) => key !== "id")
+      .filter((key) => key !== "schoolId")
       .map((key) => `${quoteIdent(key)} = excluded.${quoteIdent(key)}`)
       .join(", ");
     const values = keys.map((key) => clean[key]);
     const result = await query(
-      `insert into "school_settings" (${columns}) values (${placeholders}) on conflict (id) do update set ${updates} returning *`,
+      `insert into "school_settings" (${columns}) values (${placeholders}) on conflict ("schoolId") do update set ${updates} returning *`,
       values,
     );
     return result.rows[0];
   }
 
-  async getSettings() {
-    const result = await query(`select * from "school_settings" where id = true limit 1`);
+  async getSettings(schoolId: string) {
+    const result = await query(`select * from "school_settings" where "schoolId" = $1 limit 1`, [schoolId]);
     return result.rows[0] ?? null;
+  }
+
+  async listUsers(schoolId: string) {
+    const result = await query(
+      `select u.id, u.name, u.email, sm.role, u.photo, u.dept, u."createdAt", u."updatedAt"
+       from school_memberships sm
+       join users u on u.id = sm."userId"
+       where sm."schoolId" = $1 and sm.active = true
+       order by u."createdAt" desc`,
+      [schoolId],
+    );
+    return result.rows;
   }
 
   async call<T = unknown>(functionName: string, args: RecordData) {

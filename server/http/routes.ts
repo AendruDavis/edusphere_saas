@@ -5,13 +5,27 @@ import { getResourceConfig, type ResourceKey } from "../application/resourceRegi
 import { AppService } from "../application/appService";
 import { AuthService } from "../infrastructure/authService";
 import { StorageService } from "../infrastructure/storageService";
-import { asyncHandler, errorHandler, requireAuth, requireRole } from "./middleware";
-import { aiAccountingSchema, dataUrlUploadSchema, loginSchema, resourcePayloadSchema, userCreateSchema, userUpdateSchema } from "./schemas";
+import { ReportingService } from "../application/reportingService";
+import { TenancyService } from "../application/tenancyService";
+import { asyncHandler, errorHandler, requireAuth, requireRole, requireTenant } from "./middleware";
+import {
+  aiAccountingSchema,
+  dataUrlUploadSchema,
+  loginSchema,
+  reportCommentsSchema,
+  reportQuerySchema,
+  schoolCreateSchema,
+  resourcePayloadSchema,
+  userCreateSchema,
+  userUpdateSchema,
+} from "./schemas";
 
 export function registerBackendRoutes(app: Express, genAI: GoogleGenAI | null) {
   const authService = new AuthService();
   const appService = new AppService(undefined, authService);
   const storageService = new StorageService();
+  const reportingService = new ReportingService();
+  const tenancyService = new TenancyService();
 
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", database: "postgresql" });
@@ -26,87 +40,167 @@ export function registerBackendRoutes(app: Express, genAI: GoogleGenAI | null) {
   );
 
   app.get(
+    "/api/reports/students/:studentId/progressive",
+    requireAuth(authService),
+    requireTenant(authService),
+    asyncHandler(async (req, res) => {
+      const input = reportQuerySchema.parse(req.query);
+      res.json(await reportingService.buildProgressiveReport(req.tenant!, {
+        studentId: req.params.studentId,
+        termName: input.term,
+        yearName: input.year,
+      }));
+    }),
+  );
+
+  app.put(
+    "/api/reports/students/:studentId/comments",
+    requireAuth(authService),
+    requireTenant(authService),
+    requireRole("admin", "teacher"),
+    asyncHandler(async (req, res) => {
+      const input = reportCommentsSchema.parse(req.body);
+      res.json(await reportingService.saveComments(req.currentUser!, req.tenant!, {
+        studentId: req.params.studentId,
+        termName: input.term,
+        yearName: input.year,
+      }, input));
+    }),
+  );
+
+  app.post(
+    "/api/reports/students/:studentId/finalize",
+    requireAuth(authService),
+    requireTenant(authService),
+    requireRole("admin", "teacher"),
+    asyncHandler(async (req, res) => {
+      const input = reportQuerySchema.parse(req.body);
+      res.json(await reportingService.finalize(req.currentUser!, req.tenant!, {
+        studentId: req.params.studentId,
+        termName: input.term,
+        yearName: input.year,
+      }));
+    }),
+  );
+
+  app.get(
+    "/api/students/:studentId/status-summary",
+    requireAuth(authService),
+    requireTenant(authService),
+    asyncHandler(async (req, res) => {
+      const input = reportQuerySchema.parse(req.query);
+      res.json(await reportingService.getStudentStatus(req.tenant!, req.params.studentId, input.term, input.year));
+    }),
+  );
+
+  app.get(
     "/api/auth/me",
     requireAuth(authService),
     asyncHandler(async (req, res) => {
-      res.json({ user: req.currentUser });
+      res.json({ user: req.currentUser, schools: await authService.listSchoolMemberships(req.currentUser!.id) });
+    }),
+  );
+
+  app.get(
+    "/api/me/schools",
+    requireAuth(authService),
+    asyncHandler(async (req, res) => {
+      res.json(await authService.listSchoolMemberships(req.currentUser!.id));
+    }),
+  );
+
+  app.post(
+    "/api/schools",
+    requireAuth(authService),
+    requireRole("admin"),
+    asyncHandler(async (req, res) => {
+      res.status(201).json(await tenancyService.createSchool(req.currentUser!, schoolCreateSchema.parse(req.body)));
     }),
   );
 
   app.get(
     "/api/app/snapshot",
     requireAuth(authService),
+    requireTenant(authService),
     asyncHandler(async (req, res) => {
-      res.json(await appService.getSnapshot(req.currentUser!));
+      res.json(await appService.getSnapshot(req.currentUser!, req.tenant!));
     }),
   );
 
   app.put(
     "/api/settings/school",
     requireAuth(authService),
+    requireTenant(authService),
     requireRole("admin"),
     asyncHandler(async (req, res) => {
-      res.json(await appService.saveSettings(req.currentUser!, resourcePayloadSchema.parse(req.body)));
+      res.json(await appService.saveSettings(req.currentUser!, req.tenant!, resourcePayloadSchema.parse(req.body)));
     }),
   );
 
   app.post(
     "/api/users",
     requireAuth(authService),
+    requireTenant(authService),
     requireRole("admin"),
     asyncHandler(async (req, res) => {
-      res.status(201).json(await appService.createResource(req.currentUser!, "users", userCreateSchema.parse(req.body)));
+      res.status(201).json(await appService.createResource(req.currentUser!, req.tenant!, "users", userCreateSchema.parse(req.body)));
     }),
   );
 
   app.patch(
     "/api/users/:id",
     requireAuth(authService),
+    requireTenant(authService),
     requireRole("admin"),
     asyncHandler(async (req, res) => {
-      res.json(await appService.updateResource(req.currentUser!, "users", req.params.id, userUpdateSchema.parse(req.body)));
+      res.json(await appService.updateResource(req.currentUser!, req.tenant!, "users", req.params.id, userUpdateSchema.parse(req.body)));
     }),
   );
 
   app.delete(
     "/api/users/:id",
     requireAuth(authService),
+    requireTenant(authService),
     requireRole("admin"),
     asyncHandler(async (req, res) => {
-      res.json(await appService.deleteResource(req.currentUser!, "users", req.params.id));
+      res.json(await appService.deleteResource(req.currentUser!, req.tenant!, "users", req.params.id));
     }),
   );
 
   app.post(
     "/api/transactions",
     requireAuth(authService),
+    requireTenant(authService),
     requireRole("admin", "accountant"),
     asyncHandler(async (req, res) => {
-      res.status(201).json(await appService.recordTransaction(req.currentUser!, resourcePayloadSchema.parse(req.body)));
+      res.status(201).json(await appService.recordTransaction(req.currentUser!, req.tenant!, resourcePayloadSchema.parse(req.body)));
     }),
   );
 
   app.post(
     "/api/expenses",
     requireAuth(authService),
+    requireTenant(authService),
     requireRole("admin", "accountant"),
     asyncHandler(async (req, res) => {
-      res.status(201).json(await appService.recordExpense(req.currentUser!, resourcePayloadSchema.parse(req.body)));
+      res.status(201).json(await appService.recordExpense(req.currentUser!, req.tenant!, resourcePayloadSchema.parse(req.body)));
     }),
   );
 
   app.post(
     "/api/attendance",
     requireAuth(authService),
+    requireTenant(authService),
     requireRole("admin", "teacher", "nurse"),
     asyncHandler(async (req, res) => {
-      res.status(201).json(await appService.recordAttendance(req.currentUser!, resourcePayloadSchema.parse(req.body)));
+      res.status(201).json(await appService.recordAttendance(req.currentUser!, req.tenant!, resourcePayloadSchema.parse(req.body)));
     }),
   );
 
   app.post(
     "/api/storage/data-url",
     requireAuth(authService),
+    requireTenant(authService),
     requireRole("admin", "teacher"),
     asyncHandler(async (req, res) => {
       res.status(201).json(await storageService.uploadDataUrl(dataUrlUploadSchema.parse(req.body)));
@@ -116,33 +210,37 @@ export function registerBackendRoutes(app: Express, genAI: GoogleGenAI | null) {
   app.post(
     "/api/resources/:resource",
     requireAuth(authService),
+    requireTenant(authService),
     asyncHandler(async (req, res) => {
       const resource = getKnownResource(req.params.resource);
-      res.status(201).json(await appService.createResource(req.currentUser!, resource, resourcePayloadSchema.parse(req.body)));
+      res.status(201).json(await appService.createResource(req.currentUser!, req.tenant!, resource, resourcePayloadSchema.parse(req.body)));
     }),
   );
 
   app.patch(
     "/api/resources/:resource/:id",
     requireAuth(authService),
+    requireTenant(authService),
     asyncHandler(async (req, res) => {
       const resource = getKnownResource(req.params.resource);
-      res.json(await appService.updateResource(req.currentUser!, resource, req.params.id, resourcePayloadSchema.parse(req.body)));
+      res.json(await appService.updateResource(req.currentUser!, req.tenant!, resource, req.params.id, resourcePayloadSchema.parse(req.body)));
     }),
   );
 
   app.delete(
     "/api/resources/:resource/:id",
     requireAuth(authService),
+    requireTenant(authService),
     asyncHandler(async (req, res) => {
       const resource = getKnownResource(req.params.resource);
-      res.json(await appService.deleteResource(req.currentUser!, resource, req.params.id));
+      res.json(await appService.deleteResource(req.currentUser!, req.tenant!, resource, req.params.id));
     }),
   );
 
   app.post(
     "/api/ai/accounting/analyze",
     requireAuth(authService),
+    requireTenant(authService),
     requireRole("admin", "accountant"),
     asyncHandler(async (req, res) => {
       if (!genAI) throw new AppError(500, "Gemini API key not configured");
@@ -179,8 +277,9 @@ export function registerBackendRoutes(app: Express, genAI: GoogleGenAI | null) {
   app.get(
     "/api/transport/bus-locations",
     requireAuth(authService),
+    requireTenant(authService),
     asyncHandler(async (req, res) => {
-      res.json(await appService.getBusLocations(req.currentUser!));
+      res.json(await appService.getBusLocations(req.currentUser!, req.tenant!));
     }),
   );
 

@@ -1,7 +1,7 @@
 import "dotenv/config";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { query, closePool } from "../infrastructure/database";
+import { query, closePool, withTransaction } from "../infrastructure/database";
 
 async function main() {
   const migrationsDir = path.join(process.cwd(), "database", "migrations");
@@ -22,16 +22,11 @@ async function main() {
     }
 
     const sql = await fs.readFile(path.join(migrationsDir, file), "utf8");
-    await query("begin");
-    try {
-      await query(sql);
-      await query(`insert into schema_migrations (name) values ($1)`, [file]);
-      await query("commit");
-      console.log(`Applied ${file}`);
-    } catch (error) {
-      await query("rollback");
-      throw error;
-    }
+    await withTransaction(async (client) => {
+      await client.query(sql);
+      await client.query(`insert into schema_migrations (name) values ($1)`, [file]);
+    });
+    console.log(`Applied ${file}`);
   }
 }
 

@@ -29,7 +29,18 @@ export default function Settings() {
     address: schoolSettings.address || "123 Education Lane, Academic City",
     academicYear: schoolSettings.academicYear || "2026/2027",
     currency: schoolSettings.currency || "UGX",
-    classFees: schoolSettings.classFees || {}
+    classFees: schoolSettings.classFees || {},
+    motto: schoolSettings.motto || "",
+    deoCode: schoolSettings.deoCode || "",
+    tin: schoolSettings.tin || "",
+    primaryColor: schoolSettings.primaryColor || "#0066CC",
+    secondaryColor: schoolSettings.secondaryColor || "#009900",
+    bankName: schoolSettings.bankName || "",
+    bankAccount: schoolSettings.bankAccount || "",
+    payCode: schoolSettings.payCode || "",
+    reportFooter: schoolSettings.reportFooter || "",
+    stampWarning: schoolSettings.stampWarning || "Not Valid without school Official Stamp",
+    assessmentModel: schoolSettings.assessmentModel || "percentage_100"
   });
 
   // Sync local settings when schoolSettings load (first time)
@@ -124,7 +135,22 @@ export default function Settings() {
       classes: localSettings.classes,
       currency: localSettings.currency,
       academicYear: localSettings.academicYear,
-      classFees: localSettings.classFees
+      classFees: localSettings.classFees,
+      gradingScale: localSettings.gradingScale,
+      address: localSettings.address,
+      phone: localSettings.phone,
+      email: localSettings.email,
+      motto: localSettings.motto,
+      deoCode: localSettings.deoCode,
+      tin: localSettings.tin,
+      primaryColor: localSettings.primaryColor,
+      secondaryColor: localSettings.secondaryColor,
+      bankName: localSettings.bankName,
+      bankAccount: localSettings.bankAccount,
+      payCode: localSettings.payCode,
+      reportFooter: localSettings.reportFooter,
+      stampWarning: localSettings.stampWarning,
+      assessmentModel: localSettings.assessmentModel
     });
     toast.success("Settings saved successfully.");
   };
@@ -235,6 +261,69 @@ export default function Settings() {
                       className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
                     />
                   </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">Motto</span>
+                    <input className="app-input" value={localSettings.motto} onChange={(e) => setLocalSettings({ ...localSettings, motto: e.target.value })} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">DEO Code</span>
+                    <input className="app-input" value={localSettings.deoCode} onChange={(e) => setLocalSettings({ ...localSettings, deoCode: e.target.value })} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">Address / P.O. Box</span>
+                    <input className="app-input" value={localSettings.address} onChange={(e) => setLocalSettings({ ...localSettings, address: e.target.value })} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">TIN</span>
+                    <input className="app-input" value={localSettings.tin} onChange={(e) => setLocalSettings({ ...localSettings, tin: e.target.value })} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">Phone</span>
+                    <input className="app-input" value={localSettings.phone} onChange={(e) => setLocalSettings({ ...localSettings, phone: e.target.value })} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">Email</span>
+                    <input className="app-input" type="email" value={localSettings.email} onChange={(e) => setLocalSettings({ ...localSettings, email: e.target.value })} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">Primary color</span>
+                    <input className="app-input h-11" type="color" value={localSettings.primaryColor} onChange={(e) => setLocalSettings({ ...localSettings, primaryColor: e.target.value })} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">Secondary color</span>
+                    <input className="app-input h-11" type="color" value={localSettings.secondaryColor} onChange={(e) => setLocalSettings({ ...localSettings, secondaryColor: e.target.value })} />
+                  </label>
+                </div>
+                <div className="grid grid-cols-1 gap-4 border-t border-gray-100 pt-4 md:grid-cols-2">
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">Bank name</span>
+                    <input className="app-input" value={localSettings.bankName} onChange={(e) => setLocalSettings({ ...localSettings, bankName: e.target.value })} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">Bank account</span>
+                    <input className="app-input" value={localSettings.bankAccount} onChange={(e) => setLocalSettings({ ...localSettings, bankAccount: e.target.value })} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">School pay-code</span>
+                    <input className="app-input" value={localSettings.payCode} onChange={(e) => setLocalSettings({ ...localSettings, payCode: e.target.value })} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">Assessment model</span>
+                    <select className="app-select" value={localSettings.assessmentModel} onChange={(e) => setLocalSettings({ ...localSettings, assessmentModel: e.target.value as "competency_3" | "percentage_100" })}>
+                      <option value="competency_3">Competency A1-A4 (0-3)</option>
+                      <option value="percentage_100">Percentage A1-A4 (0-100)</option>
+                    </select>
+                  </label>
+                  <label className="space-y-1 md:col-span-2">
+                    <span className="text-sm font-medium text-gray-700">Official stamp warning</span>
+                    <input className="app-input" value={localSettings.stampWarning} onChange={(e) => setLocalSettings({ ...localSettings, stampWarning: e.target.value })} />
+                  </label>
+                  <label className="space-y-1 md:col-span-2">
+                    <span className="text-sm font-medium text-gray-700">Report footer</span>
+                    <input className="app-input" value={localSettings.reportFooter} onChange={(e) => setLocalSettings({ ...localSettings, reportFooter: e.target.value })} />
+                  </label>
                 </div>
               </div>
             </div>

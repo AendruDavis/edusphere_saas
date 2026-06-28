@@ -23,7 +23,7 @@ type Draft = {
   a2: string;
   a3: string;
   a4: string;
-  idf: string;
+  examScore: string;
   teacherInitials: string;
 };
 
@@ -53,7 +53,7 @@ function draftFromMark(mark?: Mark): Draft {
     a2: scoreToString(mark?.a2 ?? mark?.score),
     a3: scoreToString(mark?.a3 ?? mark?.score),
     a4: scoreToString(mark?.a4 ?? mark?.score),
-    idf: scoreToString(mark?.idf ?? mark?.score),
+    examScore: scoreToString(mark?.examScore ?? mark?.score),
     teacherInitials: mark?.teacherInitials || "",
   };
 }
@@ -68,16 +68,20 @@ function roundScore(value: number | null) {
   return value === null ? null : Math.round(value * 100) / 100;
 }
 
-function calculateDraft(draft: Draft) {
+function calculateDraft(draft: Draft, model: "competency_3" | "percentage_100") {
   const assessmentScores = [draft.a1, draft.a2, draft.a3, draft.a4].map(numberOrNull).filter((value): value is number => value !== null);
   const avg = assessmentScores.length ? assessmentScores.reduce((sum, value) => sum + value, 0) / assessmentScores.length : null;
-  const idf = numberOrNull(draft.idf) ?? avg;
-  const finalScore = avg === null && idf === null ? null : ((avg ?? 0) * 0.2) + ((idf ?? 0) * 0.8);
+  const examScore = numberOrNull(draft.examScore);
+  const maxAssessmentScore = model === "competency_3" ? 3 : 100;
+  const coursework = avg === null ? null : (avg / maxAssessmentScore) * 20;
+  const examWeighted = examScore === null ? null : examScore * 0.8;
+  const finalScore = coursework === null || examWeighted === null ? null : coursework + examWeighted;
 
   return {
     avg: roundScore(avg),
-    twenty: roundScore(avg === null ? null : avg * 0.2),
-    eighty: roundScore(idf === null ? null : idf * 0.8),
+    identifier: model === "competency_3" && avg !== null ? Math.round(avg) : null,
+    twenty: roundScore(coursework),
+    eighty: roundScore(examWeighted),
     finalScore: roundScore(finalScore),
   };
 }
@@ -109,6 +113,8 @@ export default function Grades() {
   const [customSubject, setCustomSubject] = useState("");
   const [extraSubjects, setExtraSubjects] = useState<string[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const assessmentModel = schoolSettings.assessmentModel || "percentage_100";
+  const courseworkMax = assessmentModel === "competency_3" ? 3 : 100;
 
   const subjects = useMemo(() => Array.from(new Set([...DEFAULT_SUBJECTS, ...marks.map((mark) => mark.subject), ...extraSubjects])).sort(), [extraSubjects, marks]);
   const selectedMarks = marks.filter((mark) => mark.subject === selectedSubject && mark.term === selectedTerm && mark.year === selectedYear);
@@ -144,7 +150,7 @@ export default function Grades() {
       const entries = Object.entries(drafts) as Array<[string, Draft]>;
       let saved = 0;
       for (const [studentId, draft] of entries) {
-        const computed = calculateDraft(draft);
+        const computed = calculateDraft(draft, assessmentModel);
         if (computed.finalScore === null) continue;
         const existingMark = studentMark(studentId);
         if (existingMark?.locked && currentUser?.role !== "admin") continue;
@@ -159,7 +165,7 @@ export default function Grades() {
           a2: numberOrNull(draft.a2),
           a3: numberOrNull(draft.a3),
           a4: numberOrNull(draft.a4),
-          idf: numberOrNull(draft.idf),
+          examScore: numberOrNull(draft.examScore),
           teacherInitials: draft.teacherInitials.trim() || null,
         };
 
@@ -197,7 +203,7 @@ export default function Grades() {
         <div>
           <p className="app-page-kicker">Academics</p>
           <h1 className="app-page-title">Academic Records</h1>
-          <p className="app-page-subtitle">Capture A1-A4 assessments, IDF marks, final scores, and locked submissions.</p>
+          <p className="app-page-subtitle">Capture coursework assessments and exam scores using the school's configured calculation policy.</p>
         </div>
         {activeTab === "entry" && (
           <button
@@ -305,7 +311,7 @@ export default function Grades() {
             <table className="w-full min-w-[1180px] text-left">
               <thead>
                 <tr className="bg-white">
-                  {["Student", "Reg", "A1", "A2", "A3", "A4", "AVG", "IDF", "20%", "80%", "100%", "Grade", "Init", "Status"].map((heading) => (
+                  {["Student", "Reg", "A1", "A2", "A3", "A4", "AVG", "IDF", "EXAM", "20%", "80%", "100%", "Grade", "Init", "Status"].map((heading) => (
                     <th key={heading} className="px-4 py-5 text-center text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 first:px-8 first:text-left">{heading}</th>
                   ))}
                 </tr>
@@ -314,7 +320,7 @@ export default function Grades() {
                 {filteredStudents.map((student) => {
                   const mark = studentMark(student.id);
                   const draft = { ...draftFromMark(mark), ...drafts[student.id] };
-                  const computed = calculateDraft(draft);
+                  const computed = calculateDraft(draft, assessmentModel);
                   const grade = gradeFromScale(computed.finalScore, schoolSettings.gradingScale);
                   const isLocked = Boolean(mark?.locked);
                   const lockedForUser = isLocked && !canUnlock;
@@ -328,12 +334,13 @@ export default function Grades() {
                       <td className="px-4 py-5 text-center text-xs font-black uppercase tracking-widest text-gray-400">{student.reg}</td>
                       {(["a1", "a2", "a3", "a4"] as const).map((field) => (
                         <td key={field} className="px-2 py-5 text-center">
-                          <ScoreInput disabled={lockedForUser} value={draft[field]} onChange={(value) => updateDraft(student.id, field, value, mark)} />
+                          <ScoreInput max={courseworkMax} step={assessmentModel === "competency_3" ? 0.1 : 1} disabled={lockedForUser} value={draft[field]} onChange={(value) => updateDraft(student.id, field, value, mark)} />
                         </td>
                       ))}
                       <td className="px-4 py-5 text-center text-sm font-black text-gray-700">{computed.avg ?? "--"}</td>
+                      <td className="px-4 py-5 text-center text-sm font-black text-gray-700">{computed.identifier ?? "--"}</td>
                       <td className="px-2 py-5 text-center">
-                        <ScoreInput disabled={lockedForUser} value={draft.idf} onChange={(value) => updateDraft(student.id, "idf", value, mark)} />
+                        <ScoreInput max={100} step={1} disabled={lockedForUser} value={draft.examScore} onChange={(value) => updateDraft(student.id, "examScore", value, mark)} />
                       </td>
                       <td className="px-4 py-5 text-center text-sm font-black text-gray-500">{computed.twenty ?? "--"}</td>
                       <td className="px-4 py-5 text-center text-sm font-black text-gray-500">{computed.eighty ?? "--"}</td>
@@ -439,12 +446,13 @@ export default function Grades() {
   );
 }
 
-function ScoreInput({ value, disabled, onChange }: { value: string; disabled: boolean; onChange: (value: string) => void }) {
+function ScoreInput({ value, disabled, max, step, onChange }: { value: string; disabled: boolean; max: number; step: number; onChange: (value: string) => void }) {
   return (
     <input
       type="number"
-      max="100"
+      max={max}
       min="0"
+      step={step}
       disabled={disabled}
       placeholder="--"
       className="w-20 rounded-xl border border-gray-100 bg-white px-2 py-3 text-center text-sm font-black text-indigo-700 outline-none transition-all focus:ring-4 focus:ring-indigo-50 disabled:bg-gray-50 disabled:text-gray-300"

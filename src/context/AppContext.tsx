@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { apiRequest, clearAuthSession, getAccessToken, setAuthSession } from "../lib/api";
+import { apiRequest, clearAuthSession, getAccessToken, getActiveSchoolId, setActiveSchoolId, setAuthSession } from "../lib/api";
 import { useToast } from "./ToastContext";
 import {
   AppNotification,
@@ -17,6 +17,7 @@ import {
   Product,
   Route,
   SchoolSettings,
+  SchoolMembership,
   Staff,
   Student,
   TimetableEntry,
@@ -29,6 +30,9 @@ interface AppContextType {
   schoolSettings: SchoolSettings;
   setSchoolSettings: (settings: Partial<SchoolSettings>) => Promise<void>;
   currentUser: User | null;
+  schools: SchoolMembership[];
+  activeSchoolId: string | null;
+  setActiveSchool: (schoolId: string) => Promise<void>;
   students: Student[];
   addStudent: (student: Omit<Student, "id">) => Promise<void>;
   updateStudent: (id: string, data: Partial<Student>) => Promise<void>;
@@ -204,6 +208,8 @@ function emptySnapshot(settings = DEFAULT_SETTINGS): AppSnapshot {
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const toast = useToast();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [schools, setSchools] = useState<SchoolMembership[]>([]);
+  const [activeSchoolIdState, setActiveSchoolIdState] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<AppSnapshot>(() => emptySnapshot());
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -232,8 +238,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const { user } = await apiRequest<{ user: User }>("/api/auth/me");
+        const { user, schools: memberships } = await apiRequest<{ user: User; schools: SchoolMembership[] }>("/api/auth/me");
         if (!isMounted) return;
+        const storedSchoolId = getActiveSchoolId();
+        const activeSchoolId = memberships.some((membership) => membership.schoolId === storedSchoolId)
+          ? storedSchoolId!
+          : memberships[0]?.schoolId;
+        if (!activeSchoolId) throw new Error("This account has no active school membership");
+        setActiveSchoolId(activeSchoolId);
+        setActiveSchoolIdState(activeSchoolId);
+        setSchools(memberships);
         setCurrentUser(user);
         await refreshData();
       } catch (error) {
@@ -281,6 +295,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         json: { email, pass },
       });
       setAuthSession(session);
+      const memberships = await apiRequest<SchoolMembership[]>("/api/me/schools");
+      const activeSchoolId = memberships[0]?.schoolId;
+      if (!activeSchoolId) throw new Error("This account has no active school membership");
+      setActiveSchoolId(activeSchoolId);
+      setActiveSchoolIdState(activeSchoolId);
+      setSchools(memberships);
       setCurrentUser(session.user);
       await refreshData();
     } catch (err: any) {
@@ -294,6 +314,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     clearAuthSession();
     setCurrentUser(null);
+    setSchools([]);
+    setActiveSchoolIdState(null);
     applySnapshot(emptySnapshot());
   };
 
@@ -318,6 +340,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const getClassFees = (className: string) => snapshot.schoolSettings.classFees?.[className] || 0;
 
+  const setActiveSchool = async (schoolId: string) => {
+    if (!schools.some((membership) => membership.schoolId === schoolId)) {
+      throw new Error("You do not have access to this school");
+    }
+    setActiveSchoolId(schoolId);
+    setActiveSchoolIdState(schoolId);
+    await refreshData();
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -332,6 +363,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         schoolSettings: snapshot.schoolSettings,
         setSchoolSettings,
         currentUser,
+        schools,
+        activeSchoolId: activeSchoolIdState,
+        setActiveSchool,
         students: snapshot.students,
         addStudent: (student) => createResource("students", student),
         updateStudent: (id, data) => updateResource("students", id, data),

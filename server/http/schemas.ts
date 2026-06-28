@@ -31,3 +31,23 @@ export const dataUrlUploadSchema = z.object({
   folder: z.string().trim().max(80).optional(),
   fileName: z.string().trim().max(120).optional(),
 });
+
+export const reportQuerySchema = z.object({
+  term: z.string().trim().min(1).max(50),
+  year: z.string().trim().min(1).max(50),
+});
+
+export const reportCommentsSchema = z.object({
+  term: z.string().trim().min(1).max(50),
+  year: z.string().trim().min(1).max(50),
+  classTeacherComment: z.string().max(2000).optional(),
+  headTeacherComment: z.string().max(2000).optional(),
+  projectWork: z.string().max(100).optional(),
+  result: z.string().max(100).optional(),
+});
+
+export const schoolCreateSchema = z.object({
+  name: z.string().trim().min(2).max(150),
+  slug: z.string().trim().min(2).max(100).optional(),
+  level: z.enum(["Primary", "Secondary"]).default("Secondary"),
+});

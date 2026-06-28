@@ -4,13 +4,25 @@ import { AppError } from "../domain/errors";
 import type { AuthUser, UserRole } from "../domain/roles";
 import { canAccessRole } from "../domain/roles";
 import { AuthService } from "../infrastructure/authService";
+import type { TenantContext } from "../domain/tenancy";
 
 declare global {
   namespace Express {
     interface Request {
       currentUser?: AuthUser;
+      tenant?: TenantContext;
     }
   }
+}
+
+export function requireTenant(authService = new AuthService()): RequestHandler {
+  return asyncHandler(async (req, _res, next) => {
+    if (!req.currentUser) throw new AppError(401, "Authentication is required");
+    const schoolId = req.header("x-school-id");
+    if (!schoolId) throw new AppError(400, "Missing X-School-Id header");
+    req.tenant = await authService.resolveTenant(req.currentUser.id, schoolId);
+    next();
+  });
 }
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
@@ -38,7 +50,10 @@ export function requireAuth(authService = new AuthService()): RequestHandler {
 
 export function requireRole(...roles: UserRole[]): RequestHandler {
   return (req, _res, next) => {
-    if (!canAccessRole(req.currentUser ?? null, roles)) {
+    const scopedUser = req.currentUser && req.tenant
+      ? { ...req.currentUser, role: req.tenant.role }
+      : req.currentUser ?? null;
+    if (!canAccessRole(scopedUser, roles)) {
       next(new AppError(403, "You do not have permission to perform this action"));
       return;
     }

@@ -1,5 +1,6 @@
 const ACCESS_TOKEN_KEY = "edu_postgres_access_token";
 const REFRESH_TOKEN_KEY = "edu_postgres_refresh_token";
+const ACTIVE_SCHOOL_KEY = "edu_active_school_id";
 
 type ApiOptions = RequestInit & {
   json?: unknown;
@@ -24,6 +25,15 @@ export function setAuthSession(session: AuthSession) {
 export function clearAuthSession() {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
+  localStorage.removeItem(ACTIVE_SCHOOL_KEY);
+}
+
+export function getActiveSchoolId() {
+  return localStorage.getItem(ACTIVE_SCHOOL_KEY);
+}
+
+export function setActiveSchoolId(schoolId: string) {
+  localStorage.setItem(ACTIVE_SCHOOL_KEY, schoolId);
 }
 
 export async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T> {
@@ -36,6 +46,8 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
   const token = getAccessToken();
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
+    const schoolId = getActiveSchoolId();
+    if (schoolId) headers.set("X-School-Id", schoolId);
   }
 
   const response = await fetch(path, {

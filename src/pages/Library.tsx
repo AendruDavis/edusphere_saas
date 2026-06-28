@@ -57,18 +57,6 @@ export default function Library() {
     total: 1
   });
 
-  // Small helper to seed books if empty - for demo purposes
-  React.useEffect(() => {
-    if (books.length === 0) {
-      const mockBooks = [
-        { title: "Advanced Mathematics", author: "Dr. Euler", category: "Science", isbn: "MATH-001", available: 5, total: 10 },
-        { title: "Modern World History", author: "A. Toynbee", category: "Humanities", isbn: "HIST-002", available: 2, total: 5 },
-        { title: "Introduction to Biology", author: "C. Darwin", category: "Science", isbn: "BIO-003", available: 0, total: 3 },
-      ];
-      mockBooks.forEach(b => addBook(b));
-    }
-  }, [books.length, addBook]);
-
   const filteredBooks = books.filter(b => 
     b.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
     b.author.toLowerCase().includes(searchQuery.toLowerCase()) ||

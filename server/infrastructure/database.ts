@@ -1,4 +1,4 @@
-import { Pool, type QueryResultRow } from "pg";
+import { Pool, type PoolClient, type QueryResultRow } from "pg";
 import { AppError } from "../domain/errors";
 
 let pool: Pool | null = null;
@@ -38,4 +38,19 @@ export async function closePool() {
   if (!pool) return;
   await pool.end();
   pool = null;
+}
+
+export async function withTransaction<T>(work: (client: PoolClient) => Promise<T>) {
+  const client = await getPool().connect();
+  try {
+    await client.query("begin");
+    const result = await work(client);
+    await client.query("commit");
+    return result;
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
 }

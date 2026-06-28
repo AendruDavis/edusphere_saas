@@ -9,6 +9,13 @@ export interface User {
   photo?: string | null;
 }
 
+export interface SchoolMembership {
+  schoolId: string;
+  schoolName: string;
+  schoolSlug: string;
+  role: UserRole;
+}
+
 export interface SchoolSettings {
   name: string;
   logo: string | null;
@@ -21,6 +28,17 @@ export interface SchoolSettings {
   phone?: string;
   email?: string;
   gradingScale?: { min: number; grade: string; comment: string }[];
+  motto?: string;
+  deoCode?: string;
+  tin?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+  bankName?: string;
+  bankAccount?: string;
+  payCode?: string;
+  reportFooter?: string;
+  stampWarning?: string;
+  assessmentModel?: "competency_3" | "percentage_100";
 }
 
 export interface Student {
@@ -39,6 +57,10 @@ export interface Student {
   admissionDate?: string;
   gender?: string;
   dateOfBirth?: string;
+  lin?: string;
+  payCode?: string;
+  parentWhatsApp?: string;
+  biometricReference?: string;
 }
 
 export interface Staff {
@@ -76,6 +98,14 @@ export interface Mark {
   a3?: number | null;
   a4?: number | null;
   idf?: number | null;
+  examScore?: number | null;
+  courseworkScore?: number | null;
+  examWeightedScore?: number | null;
+  finalScore?: number | null;
+  identifier?: number | null;
+  assessmentModel?: "competency_3" | "percentage_100";
+  gradingPolicyId?: string | null;
+  policySnapshot?: Record<string, unknown> | null;
   term: string;
   year: string;
   comment?: string;
