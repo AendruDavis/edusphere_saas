@@ -1,4 +1,5 @@
 import type { UserRole } from "../domain/roles";
+import { ACADEMIC_ROLES, FINANCE_ROLES, HEALTH_ROLES, LIBRARY_ROLES, SCHOOL_ADMINS, USER_ROLES } from "../../shared/permissions";
 
 export type ResourceKey =
   | "users"
@@ -31,26 +32,27 @@ export type ResourceConfig = {
   delete: UserRole[];
 };
 
-const allRoles: UserRole[] = ["admin", "teacher", "student", "parent", "accountant", "staff", "driver", "librarian", "nurse"];
-const adminOnly: UserRole[] = ["admin"];
-const academicWriters: UserRole[] = ["admin", "teacher"];
-const financeWriters: UserRole[] = ["admin", "accountant"];
-const libraryWriters: UserRole[] = ["admin", "teacher", "librarian"];
-const healthWriters: UserRole[] = ["admin", "teacher", "nurse"];
-const transportWriters: UserRole[] = ["admin", "driver"];
-const hostelWriters: UserRole[] = ["admin", "teacher", "staff"];
+const allRoles: UserRole[] = [...USER_ROLES];
+const adminOnly: UserRole[] = SCHOOL_ADMINS;
+const superAdminOnly: UserRole[] = ["super_admin"];
+const academicWriters: UserRole[] = ACADEMIC_ROLES;
+const financeWriters: UserRole[] = FINANCE_ROLES;
+const libraryWriters: UserRole[] = LIBRARY_ROLES;
+const healthWriters: UserRole[] = HEALTH_ROLES;
+const transportWriters: UserRole[] = ["super_admin", "admin", "driver"];
+const hostelWriters: UserRole[] = ["super_admin", "admin", "staff"];
 
-const studentReaders: UserRole[] = ["admin", "teacher", "accountant"];
-const academicReaders: UserRole[] = ["admin", "teacher", "student", "parent"];
-const financeReaders: UserRole[] = ["admin", "accountant"];
-const libraryReaders: UserRole[] = ["admin", "teacher", "librarian", "student"];
-const healthReaders: UserRole[] = ["admin", "teacher", "nurse"];
-const transportReaders: UserRole[] = ["admin", "driver", "student", "parent"];
-const hostelReaders: UserRole[] = ["admin", "teacher", "staff"];
+const studentReaders: UserRole[] = ["super_admin", "admin", "teacher", "accountant", "student", "parent"];
+const academicReaders: UserRole[] = ["super_admin", "admin", "teacher", "student", "parent", "accountant"];
+const financeReaders: UserRole[] = ["super_admin", "admin", "accountant", "student", "parent"];
+const libraryReaders: UserRole[] = ["super_admin", "admin", "teacher", "librarian", "student"];
+const healthReaders: UserRole[] = HEALTH_ROLES;
+const transportReaders: UserRole[] = ["super_admin", "admin", "driver", "student", "parent"];
+const hostelReaders: UserRole[] = ["super_admin", "admin", "teacher", "staff"];
 
 export const RESOURCE_CONFIGS: Record<ResourceKey, ResourceConfig> = {
-  users: { key: "users", table: "users", read: adminOnly, create: adminOnly, update: adminOnly, delete: adminOnly },
-  students: { key: "students", table: "students", read: studentReaders, create: ["admin", "teacher", "accountant"], update: ["admin", "teacher", "accountant"], delete: adminOnly },
+  users: { key: "users", table: "users", read: adminOnly, create: adminOnly, update: adminOnly, delete: superAdminOnly },
+  students: { key: "students", table: "students", read: studentReaders, create: adminOnly, update: adminOnly, delete: adminOnly },
   staff: { key: "staff", table: "staff", read: adminOnly, create: adminOnly, update: adminOnly, delete: adminOnly },
   borrowings: { key: "borrowings", table: "borrowings", read: libraryReaders, create: libraryWriters, update: libraryWriters, delete: adminOnly },
   healthRecords: { key: "healthRecords", table: "health_records", read: healthReaders, create: healthWriters, update: healthWriters, delete: adminOnly },
@@ -59,7 +61,7 @@ export const RESOURCE_CONFIGS: Record<ResourceKey, ResourceConfig> = {
   marks: { key: "marks", table: "marks", read: academicReaders, create: academicWriters, update: academicWriters, delete: adminOnly },
   products: { key: "products", table: "inventory", read: financeReaders, create: financeWriters, update: financeWriters, delete: adminOnly },
   expenses: { key: "expenses", table: "expenses", read: financeReaders, create: financeWriters, update: financeWriters, delete: adminOnly },
-  leaveRequests: { key: "leaveRequests", table: "leave_requests", read: adminOnly, create: ["admin", "teacher", "staff"], update: ["admin"], delete: adminOnly },
+  leaveRequests: { key: "leaveRequests", table: "leave_requests", read: adminOnly, create: ["super_admin", "admin", "teacher", "staff"], update: adminOnly, delete: adminOnly },
   feeStructures: { key: "feeStructures", table: "fee_structures", read: financeReaders, create: financeWriters, update: financeWriters, delete: adminOnly },
   attendanceRecords: { key: "attendanceRecords", table: "attendance_records", read: ["admin", "teacher", "nurse"], create: ["admin", "teacher", "nurse"], update: ["admin", "teacher"], delete: adminOnly },
   vehicles: { key: "vehicles", table: "vehicles", read: transportReaders, create: transportWriters, update: transportWriters, delete: adminOnly },

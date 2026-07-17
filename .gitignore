@@ -2,6 +2,10 @@ node_modules/
 build/
 dist/
 coverage/
+tmp/vite-build/
+tmp/vite-cache/
+tmp/server-build.cjs
+tmp/server-build.cjs.map
 .DS_Store
 *.log
 .env*

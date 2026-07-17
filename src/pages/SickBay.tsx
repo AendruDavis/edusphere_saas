@@ -25,7 +25,10 @@ export default function SickBay() {
   
   const [formData, setFormData] = useState({
     sickness: "",
+    diagnosis: "",
     medication: "",
+    actionTaken: "",
+    notifyParent: true,
     status: "sick" as "sick" | "sent-home" | "back-in-class" | "monitored",
     notes: ""
   });
@@ -45,7 +48,10 @@ export default function SickBay() {
       studentId: student.id,
       studentName: student.name,
       sickness: formData.sickness,
+      diagnosis: formData.diagnosis,
       medication: formData.medication,
+      actionTaken: formData.actionTaken,
+      notifyParent: formData.notifyParent,
       status: formData.status,
       date: new Date().toISOString().split('T')[0],
       notes: formData.notes
@@ -61,7 +67,10 @@ export default function SickBay() {
     setSelectedStudentId("");
     setFormData({
       sickness: "",
+      diagnosis: "",
       medication: "",
+      actionTaken: "",
+      notifyParent: true,
       status: "sick",
       notes: ""
     });
@@ -149,7 +158,7 @@ export default function SickBay() {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <Stethoscope className="w-4 h-4 text-rose-400" />
-                        <span className="font-medium text-gray-900">{record.sickness}</span>
+                        <span className="font-medium text-gray-900">{record.diagnosis || record.sickness}</span>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <Pill className="w-4 h-4 text-emerald-400" />
@@ -270,12 +279,32 @@ export default function SickBay() {
                   />
                 </div>
                 <div className="space-y-1.5">
+                  <label className="text-sm font-bold text-gray-700 uppercase tracking-widest">Diagnosis</label>
+                  <input 
+                    type="text" 
+                    value={formData.diagnosis}
+                    onChange={(e) => setFormData({ ...formData, diagnosis: e.target.value })}
+                    placeholder="e.g. Migraine" 
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm" 
+                  />
+                </div>
+                <div className="space-y-1.5">
                   <label className="text-sm font-bold text-gray-700 uppercase tracking-widest">Medication/Drugs</label>
                   <input 
                     type="text" 
                     value={formData.medication}
                     onChange={(e) => setFormData({ ...formData, medication: e.target.value })}
                     placeholder="e.g. Panadol 500mg" 
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm" 
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-bold text-gray-700 uppercase tracking-widest">Action Taken</label>
+                  <input 
+                    type="text" 
+                    value={formData.actionTaken}
+                    onChange={(e) => setFormData({ ...formData, actionTaken: e.target.value })}
+                    placeholder="e.g. Rested, parent called" 
                     className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm" 
                   />
                 </div>
@@ -316,6 +345,19 @@ export default function SickBay() {
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none transition-all text-sm min-h-[100px]" 
                 />
               </div>
+
+              <label className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                <span>
+                  <span className="block text-sm font-bold text-gray-800">Notify parent</span>
+                  <span className="text-xs text-gray-500">Send an email/SMS/WhatsApp alert when contacts are available.</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={formData.notifyParent}
+                  onChange={(event) => setFormData({ ...formData, notifyParent: event.target.checked })}
+                  className="h-5 w-5 accent-rose-600"
+                />
+              </label>
 
               <button 
                 type="submit"

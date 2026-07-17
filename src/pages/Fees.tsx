@@ -21,7 +21,7 @@ import { useApp } from "../context/AppContext";
 import { FeeStructure, Transaction } from "../types";
 
 export default function Fees() {
-  const { students, schoolSettings, transactions, addTransaction, feeStructures, addFeeStructure, updateFeeStructure, getClassFees } = useApp();
+  const { students, schoolSettings, transactions, recordFeePayment, feeStructures, addFeeStructure, updateFeeStructure, getClassFees } = useApp();
   const [activeTab, setActiveTab] = useState<"overview" | "payments" | "structure">("overview");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -71,15 +71,13 @@ export default function Fees() {
     const student = students.find(s => s.id === paymentFormData.studentId);
     if (!student) return;
 
-    await addTransaction({
-      type: "income",
-      category: paymentFormData.category,
-      amount: paymentFormData.amount,
-      date: paymentFormData.date,
-      status: "completed",
+    await recordFeePayment({
       studentId: student.id,
-      description: `Fees payment for ${student.name} - ${paymentFormData.description}`,
-      reference: `RCPT-${Date.now().toString().slice(-6)}`
+      amount: paymentFormData.amount,
+      term: "Term 1",
+      year: schoolSettings.academicYear || "2026/2027",
+      method: paymentFormData.method,
+      description: `Fees payment for ${student.name} - ${paymentFormData.description || paymentFormData.category}`
     });
 
     setIsModalOpen(false);

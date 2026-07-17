@@ -19,8 +19,20 @@ function render(job: Job) {
   if (job.template === "attendance_check_in") {
     return `${payload.student} reported to school at ${new Date(String(payload.occurredAt)).toLocaleString("en-UG", { timeZone: "Africa/Kampala" })}.`;
   }
+  if (job.template === "attendance_event") {
+    return String(payload.message || `${payload.student} ${payload.status} at ${payload.formattedTime}.`);
+  }
   if (job.template === "sickbay_visit") {
     return `${payload.student} was attended to in Sickbay for ${payload.diagnosis}.`;
+  }
+  if (job.template === "admission_notice") {
+    return `Welcome to school. ${payload.student} has been admitted to ${payload.classApplied}. Admission No: ${payload.admissionNo}. Term fees: UGX ${payload.amount}.`;
+  }
+  if (job.template === "communication") {
+    return String(payload.message || job.type);
+  }
+  if (job.template === "staff_appraisal") {
+    return `${payload.staff}, your ${payload.term} appraisal is ready. Overall score: ${payload.overallScore}. Rating: ${payload.rating}/5.`;
   }
   if (job.template === "fee_reminder") {
     return `Dear ${payload.parent || "Parent"}, ${payload.student} has UGX ${payload.balance} outstanding for ${payload.term}. Due: ${payload.dueDate}.`;
@@ -71,6 +83,12 @@ async function main() {
          update notification_jobs set status = 'sent', "lastError" = null, "updatedAt" = now() where id = $2`,
         [job.schoolId, job.id, delivery.provider, JSON.stringify(delivery.response ?? {})],
       );
+      await query(
+        `update notification_logs
+         set status = 'sent', "sentAt" = now()
+         where "jobId" = $1`,
+        [job.id],
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Delivery failed";
       await query(
@@ -80,6 +98,12 @@ async function main() {
          )
          update notification_jobs set status = 'failed', "lastError" = $5, "updatedAt" = now() where id = $2`,
         [job.schoolId, job.id, job.channel, JSON.stringify({ error: message }), message],
+      );
+      await query(
+        `update notification_logs
+         set status = 'failed'
+         where "jobId" = $1`,
+        [job.id],
       );
     }
   }

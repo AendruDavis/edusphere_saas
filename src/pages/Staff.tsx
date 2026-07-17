@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { cn, formatCurrency } from "../lib/utils";
 import { useApp } from "../context/AppContext";
+import { Link } from "react-router-dom";
 
 export default function Staff() {
   const { users, addUser, updateUser, deleteUser, staff, addStaff, updateStaff, deleteStaff, leaveRequests, addLeaveRequest, updateLeaveRequest, schoolSettings } = useApp();
@@ -126,6 +127,12 @@ export default function Staff() {
           <p className="text-gray-500 text-sm">Oversee school personnel, payroll, and department allocations.</p>
         </div>
         <div className="flex gap-2">
+          <Link
+            to="/staff/m-e"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all hover:bg-gray-50"
+          >
+            M&E / Appraisal
+          </Link>
           {activeTab === "users" && (
             <button 
               onClick={() => { setEditingStaff(null); setFormData({ name: "", email: "", role: "teacher", dept: "", password: "password123" }); setIsModalOpen(true); }}

@@ -39,24 +39,24 @@ type NavigationItem = {
 };
 
 const navigation: NavigationItem[] = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard, roles: ["admin", "teacher", "accountant", "parent", "student", "driver", "librarian", "nurse"], group: "Core" },
-  { name: "Students", href: "/students", icon: Users, roles: ["admin", "teacher", "accountant"], group: "Core" },
-  { name: "Academics", href: "/academics", icon: GraduationCap, roles: ["admin", "teacher"], group: "Core" },
-  { name: "Grades", href: "/grades", icon: TrendingUp, roles: ["admin", "teacher", "parent", "student"], group: "Core" },
-  { name: "Timetable", href: "/timetable", icon: Calendar, roles: ["admin", "teacher", "parent", "student"], group: "Core" },
-  { name: "Attendance", href: "/attendance", icon: ShieldCheck, roles: ["admin", "teacher"], group: "Core" },
-  { name: "Fees", href: "/fees", icon: Wallet, roles: ["admin", "accountant", "parent"], group: "Operations" },
-  { name: "Finance", href: "/finance", icon: DollarSign, roles: ["admin", "accountant"], group: "Operations" },
-  { name: "Transport", href: "/transport", icon: Bus, roles: ["admin", "driver", "parent", "student"], group: "Operations" },
-  { name: "Hostels", href: "/hostels", icon: Home, roles: ["admin", "teacher", "staff"], group: "Operations" },
-  { name: "Library", href: "/library", icon: Library, roles: ["admin", "teacher", "student", "librarian"], group: "Operations" },
-  { name: "Sick Bay", href: "/sick-bay", icon: Stethoscope, roles: ["admin", "teacher", "nurse"], group: "Operations" },
-  { name: "Communication", href: "/communication", icon: MessageSquare, roles: ["admin", "teacher", "parent", "student", "librarian", "nurse"], group: "People" },
-  { name: "Reports", href: "/reports", icon: FileText, roles: ["admin", "accountant", "teacher"], group: "People" },
-  { name: "Staff", href: "/staff", icon: UserSquare2, roles: ["admin"], group: "People" },
-  { name: "Inventory", href: "/inventory", icon: Package, roles: ["admin", "accountant"], group: "System" },
-  { name: "AI Accounting", href: "/ai-accounting", icon: BrainCircuit, roles: ["admin", "accountant"], group: "System" },
-  { name: "Settings", href: "/settings", icon: Settings, roles: ["admin"], group: "System" },
+  { name: "Dashboard", href: "/", icon: LayoutDashboard, roles: ["super_admin", "admin", "teacher", "accountant", "parent", "student", "driver", "librarian", "nurse"], group: "Core" },
+  { name: "Students", href: "/students", icon: Users, roles: ["super_admin", "admin", "teacher", "accountant", "parent", "student"], group: "Core" },
+  { name: "Academics", href: "/academics", icon: GraduationCap, roles: ["super_admin", "admin", "teacher", "accountant", "parent", "student"], group: "Core" },
+  { name: "Grades", href: "/grades", icon: TrendingUp, roles: ["super_admin", "admin", "teacher", "parent", "student"], group: "Core" },
+  { name: "Timetable", href: "/timetable", icon: Calendar, roles: ["super_admin", "admin", "teacher", "parent", "student"], group: "Core" },
+  { name: "Attendance", href: "/attendance", icon: ShieldCheck, roles: ["super_admin", "admin", "teacher", "nurse", "parent", "student"], group: "Core" },
+  { name: "Fees", href: "/fees", icon: Wallet, roles: ["super_admin", "admin", "accountant", "parent", "student"], group: "Operations" },
+  { name: "Finance", href: "/finance", icon: DollarSign, roles: ["super_admin", "admin", "accountant"], group: "Operations" },
+  { name: "Transport", href: "/transport", icon: Bus, roles: ["super_admin", "admin", "driver", "parent", "student"], group: "Operations" },
+  { name: "Hostels", href: "/hostels", icon: Home, roles: ["super_admin", "admin", "teacher", "staff"], group: "Operations" },
+  { name: "Library", href: "/library", icon: Library, roles: ["super_admin", "admin", "teacher", "student", "librarian"], group: "Operations" },
+  { name: "Sick Bay", href: "/sick-bay", icon: Stethoscope, roles: ["super_admin", "admin", "nurse"], group: "Operations" },
+  { name: "Communication", href: "/communication", icon: MessageSquare, roles: ["super_admin", "admin", "teacher", "parent", "student", "librarian", "nurse"], group: "People" },
+  { name: "Reports", href: "/reports", icon: FileText, roles: ["super_admin", "admin", "accountant", "teacher", "parent", "student", "librarian", "nurse"], group: "People" },
+  { name: "Staff", href: "/staff", icon: UserSquare2, roles: ["super_admin", "admin"], group: "People" },
+  { name: "Inventory", href: "/inventory", icon: Package, roles: ["super_admin", "admin", "accountant"], group: "System" },
+  { name: "AI Accounting", href: "/ai-accounting", icon: BrainCircuit, roles: ["super_admin", "admin", "accountant"], group: "System" },
+  { name: "Settings", href: "/settings", icon: Settings, roles: ["super_admin", "admin"], group: "System" },
 ];
 
 const groups: NavigationItem["group"][] = ["Core", "Operations", "People", "System"];
@@ -274,7 +274,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <Bell className="h-5 w-5" />
             {unreadCount > 0 && <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border-2 border-white bg-rose-500" />}
           </button>
-          {currentUser?.role === "admin" && schools.length > 1 && (
+          {["super_admin", "admin"].includes(currentUser?.role || "") && schools.length > 1 && (
             <label className="relative hidden md:block">
               <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <select

@@ -1,16 +1,7 @@
-export const USER_ROLES = [
-  "admin",
-  "teacher",
-  "student",
-  "parent",
-  "accountant",
-  "staff",
-  "driver",
-  "librarian",
-  "nurse",
-] as const;
+import type { UserRole } from "../../shared/permissions";
 
-export type UserRole = (typeof USER_ROLES)[number];
+export { USER_ROLES, canManageRole, isUserRole, roleCan } from "../../shared/permissions";
+export type { UserRole } from "../../shared/permissions";
 
 export type AuthUser = {
   id: string;
@@ -19,11 +10,7 @@ export type AuthUser = {
   role: UserRole;
 };
 
-export function isUserRole(role: string): role is UserRole {
-  return USER_ROLES.includes(role as UserRole);
-}
-
 export function canAccessRole(user: AuthUser | null, roles: UserRole[]) {
   if (!user) return false;
-  return roles.includes(user.role);
+  return user.role === "super_admin" || roles.includes(user.role);
 }

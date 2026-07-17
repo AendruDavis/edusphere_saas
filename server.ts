@@ -34,15 +34,16 @@ async function startServer() {
   // Vite middleware
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
+      configLoader: "runner",
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    const staticPath = path.join(process.cwd(), process.env.STATIC_DIR || "build", "client");
+    app.use(express.static(staticPath));
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      res.sendFile(path.join(staticPath, "index.html"));
     });
   }
 

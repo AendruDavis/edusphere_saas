@@ -4,7 +4,7 @@ import { query } from "../infrastructure/database";
 
 export class NotificationService {
   async queue(
-    tenant: TenantContext,
+    tenant: Pick<TenantContext, "schoolId">,
     input: {
       type: string;
       channel: NotificationChannel;

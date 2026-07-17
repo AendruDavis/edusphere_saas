@@ -1,6 +1,6 @@
 import { getResourceConfig, SNAPSHOT_RESOURCES, type ResourceKey } from "./resourceRegistry";
 import { AppError, assertFound } from "../domain/errors";
-import { canAccessRole, type AuthUser, type UserRole } from "../domain/roles";
+import { canAccessRole, canManageRole, type AuthUser, type UserRole } from "../domain/roles";
 import { PostgresRepository, type RecordData } from "../infrastructure/postgresRepository";
 import { AuthService } from "../infrastructure/authService";
 import { query, withTransaction } from "../infrastructure/database";
@@ -8,6 +8,8 @@ import type { TenantContext } from "../domain/tenancy";
 import { AssessmentService } from "./assessmentService";
 import { LibraryService } from "./libraryService";
 import { NotificationService } from "./notificationService";
+import { AuditService } from "./auditService";
+import { StaffService } from "./staffService";
 
 const DEFAULT_SETTINGS = {
   name: "EduSphere Academy",
@@ -85,6 +87,8 @@ export class AppService {
     private readonly assessmentService = new AssessmentService(),
     private readonly libraryService = new LibraryService(),
     private readonly notificationService = new NotificationService(),
+    private readonly auditService = new AuditService(),
+    private readonly staffService = new StaffService(auditService, notificationService),
   ) {}
 
   async getSnapshot(user: AuthUser, tenant: TenantContext) {
@@ -163,6 +167,10 @@ export class AppService {
     const normalizedPayload = normalizePayload(resource, payload);
 
     if (resource === "users") {
+      const role = normalizedPayload.role as UserRole | undefined;
+      if (role && !canManageRole(actor.role, role, "create")) {
+        throw new AppError(403, "You cannot create a user with that role");
+      }
       return this.authService.createUser(normalizedPayload as CreateUserPayload, tenant.schoolId);
     }
 
@@ -183,15 +191,26 @@ export class AppService {
       const record = await this.repository.create(config.table, {
         ...normalizedPayload,
         diagnosis: normalizedPayload.diagnosis ?? normalizedPayload.sickness,
+        actionTaken: normalizedPayload.actionTaken ?? normalizedPayload.notes,
         visitAt,
         nurseId: actor.id,
       }, tenant.schoolId);
-      await this.notificationService.queueSickbayAlert(
-        tenant,
-        String(normalizedPayload.studentId),
-        String(normalizedPayload.diagnosis ?? normalizedPayload.sickness ?? "medical attention"),
-        visitAt,
-      );
+      if (normalizedPayload.notifyParent !== false) {
+        await this.notificationService.queueSickbayAlert(
+          tenant,
+          String(normalizedPayload.studentId),
+          String(normalizedPayload.diagnosis ?? normalizedPayload.sickness ?? "medical attention"),
+          visitAt,
+        );
+      }
+      await this.auditService.record(actor, tenant, {
+        action: "sickbay.record_created",
+        entity: "health_records",
+        entityId: String(record.id),
+        riskLevel: "restricted",
+        summary: "Created student health record",
+        metadata: { studentId: normalizedPayload.studentId, notifyParent: normalizedPayload.notifyParent !== false },
+      });
       return record;
     }
 
@@ -221,6 +240,10 @@ export class AppService {
     const normalizedPayload = normalizePayload(resource, payload);
 
     if (resource === "users") {
+      const role = normalizedPayload.role as UserRole | undefined;
+      if (role && !canManageRole(actor.role, role, "update")) {
+        throw new AppError(403, "You cannot assign that role");
+      }
       return this.authService.updateUser(id, normalizedPayload as UpdateUserPayload, tenant.schoolId);
     }
 
@@ -230,6 +253,10 @@ export class AppService {
 
     if (resource === "borrowings") {
       return this.libraryService.updateLoan(tenant, id, normalizedPayload);
+    }
+
+    if (resource === "leaveRequests" && (normalizedPayload.status === "approved" || normalizedPayload.status === "rejected")) {
+      return this.staffService.reviewLeave(actor, tenant, id, normalizedPayload.status as "approved" | "rejected");
     }
 
     if (resource === "dormAllocations" && normalizedPayload.status === "checked-out") {
@@ -250,6 +277,14 @@ export class AppService {
     requireRoles(actor, config.delete);
 
     if (resource === "users") {
+      const target = await query<{ role: UserRole }>(
+        `select role from school_memberships where "schoolId" = $1 and "userId" = $2 and active = true limit 1`,
+        [tenant.schoolId, id],
+      );
+      const targetRole = target.rows[0]?.role;
+      if (targetRole && !canManageRole(actor.role, targetRole, "delete")) {
+        throw new AppError(403, "You cannot remove that user role");
+      }
       return this.authService.removeUserFromSchool(id, tenant.schoolId);
     }
 
@@ -282,12 +317,37 @@ export class AppService {
     return this.repository.create("attendance_records", payload, tenant.schoolId);
   }
 
+  async bulkSaveMarks(user: AuthUser, tenant: TenantContext, entries: RecordData[]) {
+    const actor = tenantUser(user, tenant);
+    requireRoles(actor, ["admin", "teacher"]);
+    const saved = [];
+    for (const entry of entries) {
+      const existing = await this.findExistingMark(tenant, entry);
+      if (existing) {
+        saved.push(await this.updateMark(actor, tenant, String(existing.id), entry));
+      } else {
+        saved.push(await this.createMark(actor, tenant, entry));
+      }
+    }
+    return { savedCount: saved.length, marks: saved };
+  }
+
   private async createMark(user: AuthUser, tenant: TenantContext, payload: RecordData) {
     const calculated = await this.assessmentService.calculateMark(tenant, payload);
     const normalized = applyMarkMetadata(calculated, null, user);
     const mark = await this.repository.create("marks", normalized, tenant.schoolId);
     await this.auditMark("create", mark, null, mark, user, tenant.schoolId);
     return mark;
+  }
+
+  private async findExistingMark(tenant: TenantContext, payload: RecordData) {
+    const result = await query(
+      `select * from marks
+       where "schoolId" = $1 and "studentId" = $2 and subject = $3 and term = $4 and year = $5
+       limit 1`,
+      [tenant.schoolId, payload.studentId, payload.subject, payload.term, payload.year],
+    );
+    return result.rows[0] ?? null;
   }
 
   private async updateMark(user: AuthUser, tenant: TenantContext, id: string, payload: RecordData) {

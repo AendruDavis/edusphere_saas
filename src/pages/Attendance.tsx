@@ -15,14 +15,17 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApp } from "../context/AppContext";
+import { useToast } from "../context/ToastContext";
 
 export default function Attendance() {
-  const { students, staff, attendanceRecords, addAttendanceRecord } = useApp();
+  const { students, staff, attendanceRecords, addAttendanceRecord, recordAttendanceEvent } = useApp();
+  const toast = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     entityId: "",
     status: "present" as "present" | "absent" | "late",
+    eventType: "IN" as "IN" | "OUT",
     date: new Date().toISOString().split('T')[0],
     biometricVerified: false
   });
@@ -47,6 +50,18 @@ export default function Attendance() {
     const student = students.find(s => s.id === formData.entityId);
     const staffMember = staff.find(s => s.id === formData.entityId);
     
+    if (student && formData.status !== "absent") {
+      await recordAttendanceEvent({
+        studentId: student.id,
+        timestamp: new Date(`${formData.date}T${new Date().toTimeString().slice(0, 8)}`).toISOString(),
+        type: formData.eventType,
+        source: "manual",
+      });
+      toast.success("Attendance event recorded and parent notifications queued where allowed.");
+      setIsModalOpen(false);
+      return;
+    }
+
     if (student || staffMember) {
       await addAttendanceRecord({
         studentId: formData.entityId,
@@ -56,6 +71,7 @@ export default function Attendance() {
         role: student ? "Student" : "Staff",
         biometricVerified: formData.biometricVerified
       });
+      toast.success("Attendance record saved.");
       setIsModalOpen(false);
     }
   };
@@ -227,6 +243,19 @@ export default function Attendance() {
                   />
                 </div>
               </div>
+              {students.some((student) => student.id === formData.entityId) && formData.status !== "absent" && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-gray-400">Attendance Event</label>
+                  <select
+                    value={formData.eventType}
+                    onChange={e => setFormData({...formData, eventType: e.target.value as "IN" | "OUT"})}
+                    className="w-full px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl font-bold"
+                  >
+                    <option value="IN">Check In</option>
+                    <option value="OUT">Check Out</option>
+                  </select>
+                </div>
+              )}
               <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl border border-gray-100">
                 <div className={cn(
                   "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
@@ -263,4 +292,3 @@ export default function Attendance() {
     </div>
   );
 }
-

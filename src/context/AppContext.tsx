@@ -48,6 +48,14 @@ interface AppContextType {
   addHealthRecord: (record: Omit<HealthRecord, "id">) => Promise<void>;
   transactions: Transaction[];
   addTransaction: (record: Omit<Transaction, "id">) => Promise<void>;
+  recordFeePayment: (payment: {
+    studentId: string;
+    amount: number;
+    term: string;
+    year: string;
+    method: string;
+    description?: string;
+  }) => Promise<void>;
   books: Book[];
   addBook: (book: Omit<Book, "id">) => Promise<void>;
   updateBook: (id: string, data: Partial<Book>) => Promise<void>;
@@ -73,6 +81,7 @@ interface AppContextType {
   updateLeaveRequest: (id: string, data: Partial<LeaveRequest>) => Promise<void>;
   attendanceRecords: AttendanceRecord[];
   addAttendanceRecord: (record: Omit<AttendanceRecord, "id">) => Promise<void>;
+  recordAttendanceEvent: (event: { studentId: string; timestamp: string; type: "IN" | "OUT"; source: "manual" }) => Promise<void>;
   feeStructures: FeeStructure[];
   addFeeStructure: (fee: Omit<FeeStructure, "id">) => Promise<void>;
   updateFeeStructure: (id: string, data: Partial<FeeStructure>) => Promise<void>;
@@ -393,6 +402,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           await apiRequest<Transaction>("/api/transactions", { method: "POST", json: record });
           await refreshData();
         },
+        recordFeePayment: async (payment) => {
+          await apiRequest("/api/fees/pay", { method: "POST", json: payment });
+          await refreshData();
+        },
         books: snapshot.books,
         addBook: (book) => createResource("books", book),
         updateBook: (id, data) => updateResource("books", id, data),
@@ -422,6 +435,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         attendanceRecords: snapshot.attendanceRecords,
         addAttendanceRecord: async (record) => {
           await apiRequest<AttendanceRecord>("/api/attendance", { method: "POST", json: record });
+          await refreshData();
+        },
+        recordAttendanceEvent: async (event) => {
+          await apiRequest<AttendanceRecord>("/api/attendance/manual", { method: "POST", json: event });
           await refreshData();
         },
         feeStructures: snapshot.feeStructures,

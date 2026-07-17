@@ -8,8 +8,10 @@ import { ToastProvider } from "./context/ToastContext";
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Students = lazy(() => import("./pages/Students"));
 const StudentDetail = lazy(() => import("./pages/StudentDetail"));
+const Admissions = lazy(() => import("./pages/Admissions"));
 const Finance = lazy(() => import("./pages/Finance"));
 const Staff = lazy(() => import("./pages/Staff"));
+const StaffMonitoring = lazy(() => import("./pages/StaffMonitoring"));
 const Attendance = lazy(() => import("./pages/Attendance"));
 const AiAccounting = lazy(() => import("./pages/AiAccounting"));
 const Academics = lazy(() => import("./pages/Academics"));
@@ -63,24 +65,26 @@ function AppRoutes() {
   }
 
   const navRoles = {
-    dashboard: ["admin", "teacher", "accountant", "parent", "student", "driver", "librarian", "nurse"],
-    students: ["admin", "teacher", "accountant"],
-    staff: ["admin"],
-    academics: ["admin", "teacher"],
-    grades: ["admin", "teacher", "parent", "student"],
-    timetable: ["admin", "teacher", "parent", "student"],
-    transport: ["admin", "driver", "parent", "student"],
-    hostels: ["admin", "teacher", "staff"],
-    attendance: ["admin", "teacher"],
-    library: ["admin", "teacher", "student", "librarian"],
-    sickBay: ["admin", "teacher", "nurse"],
-    fees: ["admin", "accountant", "parent"],
-    finance: ["admin", "accountant"],
-    communication: ["admin", "teacher", "parent", "student", "librarian", "nurse"],
-    reports: ["admin", "accountant", "teacher"],
-    aiAccounting: ["admin", "accountant"],
-    inventory: ["admin", "accountant"],
-    settings: ["admin"]
+    dashboard: ["super_admin", "admin", "teacher", "accountant", "parent", "student", "driver", "librarian", "nurse"],
+    students: ["super_admin", "admin", "teacher", "accountant", "parent", "student"],
+    admissions: ["super_admin", "admin"],
+    staff: ["super_admin", "admin"],
+    staffMonitoring: ["super_admin", "admin"],
+    academics: ["super_admin", "admin", "teacher", "accountant", "parent", "student"],
+    grades: ["super_admin", "admin", "teacher", "parent", "student"],
+    timetable: ["super_admin", "admin", "teacher", "parent", "student"],
+    transport: ["super_admin", "admin", "driver", "parent", "student"],
+    hostels: ["super_admin", "admin", "teacher", "staff"],
+    attendance: ["super_admin", "admin", "teacher", "nurse", "parent", "student"],
+    library: ["super_admin", "admin", "teacher", "student", "librarian"],
+    sickBay: ["super_admin", "admin", "nurse"],
+    fees: ["super_admin", "admin", "accountant", "parent", "student"],
+    finance: ["super_admin", "admin", "accountant"],
+    communication: ["super_admin", "admin", "teacher", "parent", "student", "librarian", "nurse"],
+    reports: ["super_admin", "admin", "accountant", "teacher", "parent", "student", "librarian", "nurse"],
+    aiAccounting: ["super_admin", "admin", "accountant"],
+    inventory: ["super_admin", "admin", "accountant"],
+    settings: ["super_admin", "admin"]
   };
 
   return (
@@ -94,6 +98,12 @@ function AppRoutes() {
               <AppLayout><Students /></AppLayout>
             </RoleProtectedRoute>
           } />
+
+          <Route path="/students/admissions" element={
+            <RoleProtectedRoute roles={navRoles.admissions}>
+              <AppLayout><Admissions /></AppLayout>
+            </RoleProtectedRoute>
+          } />
           
           <Route path="/students/:id" element={
             <RoleProtectedRoute roles={navRoles.students}>
@@ -104,6 +114,18 @@ function AppRoutes() {
           <Route path="/staff" element={
             <RoleProtectedRoute roles={navRoles.staff}>
               <AppLayout><Staff /></AppLayout>
+            </RoleProtectedRoute>
+          } />
+
+          <Route path="/staff/m-e" element={
+            <RoleProtectedRoute roles={navRoles.staffMonitoring}>
+              <AppLayout><StaffMonitoring /></AppLayout>
+            </RoleProtectedRoute>
+          } />
+
+          <Route path="/staff/appraisal" element={
+            <RoleProtectedRoute roles={navRoles.staffMonitoring}>
+              <AppLayout><StaffMonitoring /></AppLayout>
             </RoleProtectedRoute>
           } />
           

@@ -1,4 +1,6 @@
-export type UserRole = "admin" | "teacher" | "student" | "parent" | "accountant" | "staff" | "driver" | "librarian" | "nurse";
+import type { UserRole } from "../shared/permissions";
+
+export type { UserRole };
 
 export interface User {
   id: string;
@@ -173,7 +175,11 @@ export interface HealthRecord {
   studentId: string;
   studentName: string;
   sickness: string;
+  diagnosis?: string;
   medication: string;
+  actionTaken?: string;
+  notifyParent?: boolean;
+  parentNotifiedAt?: string;
   status: "sick" | "sent-home" | "back-in-class" | "monitored";
   date: string;
   notes?: string;
@@ -231,6 +237,8 @@ export interface AttendanceRecord {
   status: "present" | "absent" | "late";
   role: "Student" | "Staff";
   biometricVerified?: boolean;
+  eventType?: "IN" | "OUT";
+  parentNotificationStatus?: "not_required" | "queued" | "sent" | "failed" | "pending_approval" | "skipped";
 }
 
 export interface FeeStructure {
