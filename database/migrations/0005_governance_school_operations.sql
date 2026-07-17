@@ -50,9 +50,10 @@ create table if not exists public.parents (
   address text,
   "dataConsentAt" timestamptz,
   "createdAt" timestamptz not null default now(),
-  "updatedAt" timestamptz not null default now(),
-  constraint parents_contact_required check (email is not null or phone is not null or whatsapp is not null)
+  "updatedAt" timestamptz not null default now()
 );
+
+alter table public.parents drop constraint if exists parents_contact_required;
 
 create unique index if not exists parents_school_email_key on public.parents ("schoolId", lower(email)) where email is not null;
 create index if not exists parents_school_phone_idx on public.parents ("schoolId", phone) where phone is not null;
@@ -86,9 +87,35 @@ on conflict do nothing;
 insert into public.student_parents ("schoolId", "studentId", "parentId", relationship, "isPrimary", "canReceiveAlerts")
 select st."schoolId", st.id, p.id, 'Guardian', true, true
 from public.students st
-join public.parents p on p."schoolId" = st."schoolId"
-  and coalesce(lower(p.email), '') = coalesce(lower(st."parentEmail"), '')
-where st."parentEmail" is not null
+join lateral (
+  select p.id
+  from public.parents p
+  where p."schoolId" = st."schoolId"
+    and (
+      (nullif(st."parentEmail", '') is not null and lower(p.email) = lower(nullif(st."parentEmail", '')))
+      or (nullif(st."parentPhone", '') is not null and p.phone = nullif(st."parentPhone", ''))
+      or (nullif(st."parentWhatsApp", '') is not null and p.whatsapp = nullif(st."parentWhatsApp", ''))
+      or (
+        nullif(st."parentEmail", '') is null
+        and nullif(st."parentPhone", '') is null
+        and nullif(st."parentWhatsApp", '') is null
+        and p.email is null
+        and p.phone is null
+        and p.whatsapp is null
+        and p."fullName" = coalesce(nullif(st.parent, ''), 'Parent / Guardian')
+      )
+    )
+  order by
+    case
+      when nullif(st."parentEmail", '') is not null and lower(p.email) = lower(nullif(st."parentEmail", '')) then 1
+      when nullif(st."parentPhone", '') is not null and p.phone = nullif(st."parentPhone", '') then 2
+      when nullif(st."parentWhatsApp", '') is not null and p.whatsapp = nullif(st."parentWhatsApp", '') then 3
+      else 4
+    end,
+    p."createdAt"
+  limit 1
+) p on true
+where (st.parent is not null or st."parentEmail" is not null or st."parentPhone" is not null or st."parentWhatsApp" is not null)
 on conflict do nothing;
 
 create table if not exists public.admissions (
