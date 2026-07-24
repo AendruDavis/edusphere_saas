@@ -17,12 +17,20 @@ export function DataTable<T extends Record<string, unknown>>({
   searchPlaceholder = "Search...",
   exportFilename,
   pageSize = 10,
+  mobileRow,
+  getRowKey,
+  emptyTitle = "No records found",
+  emptyDescription,
 }: {
   rows: T[];
   columns: DataTableColumn<T>[];
   searchPlaceholder?: string;
   exportFilename?: string;
   pageSize?: number;
+  mobileRow?: (row: T) => React.ReactNode;
+  getRowKey?: (row: T, index: number) => React.Key;
+  emptyTitle?: string;
+  emptyDescription?: string;
 }) {
   const [query, setQuery] = React.useState("");
   const [page, setPage] = React.useState(1);
@@ -53,7 +61,7 @@ export function DataTable<T extends Record<string, unknown>>({
   }, [query, rows.length]);
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white">
+    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
       <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full sm:max-w-sm">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -66,7 +74,35 @@ export function DataTable<T extends Record<string, unknown>>({
         </div>
         {exportFilename && <ExportMenu rows={filteredRows} filename={exportFilename} />}
       </div>
-      <div className="overflow-x-auto">
+      <div className="space-y-3 bg-slate-50/60 p-3 md:hidden">
+        {visibleRows.map((row, rowIndex) => (
+          <div key={getRowKey?.(row, rowIndex) ?? String(row.id ?? rowIndex)} className="app-mobile-record">
+            {mobileRow ? mobileRow(row) : (
+              <dl className="space-y-3">
+                {columns.slice(0, 5).map((column, columnIndex) => (
+                  <div key={column.key} className={cn(columnIndex === 0 ? "" : "flex items-start justify-between gap-4 border-t border-slate-100 pt-3")}>
+                    {columnIndex === 0 ? (
+                      <div className="text-sm font-semibold text-slate-950">{column.accessor(row)}</div>
+                    ) : (
+                      <>
+                        <dt className="text-xs font-medium text-slate-500">{column.header}</dt>
+                        <dd className="min-w-0 text-right text-sm text-slate-800">{column.accessor(row)}</dd>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </dl>
+            )}
+          </div>
+        ))}
+        {visibleRows.length === 0 && (
+          <div className="app-empty-state bg-white">
+            <p className="font-semibold text-slate-700">{emptyTitle}</p>
+            {emptyDescription && <p className="mt-1 text-sm font-normal text-slate-500">{emptyDescription}</p>}
+          </div>
+        )}
+      </div>
+      <div className="hidden overflow-x-auto md:block" role="region" aria-label="Records table" tabIndex={0}>
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
             <tr>
@@ -108,12 +144,12 @@ export function DataTable<T extends Record<string, unknown>>({
           </tbody>
         </table>
       </div>
-      <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-500">
+      <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
         <span>{filteredRows.length} record{filteredRows.length === 1 ? "" : "s"}</span>
-        <div className="flex items-center gap-2">
-          <button type="button" className="app-button-secondary h-9" disabled={safePage <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</button>
-          <span>Page {safePage} of {pageCount}</span>
-          <button type="button" className="app-button-secondary h-9" disabled={safePage >= pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>Next</button>
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+          <button type="button" className="app-button-secondary px-3" disabled={safePage <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</button>
+          <span className="whitespace-nowrap">Page {safePage} of {pageCount}</span>
+          <button type="button" className="app-button-secondary px-3" disabled={safePage >= pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>Next</button>
         </div>
       </div>
     </div>

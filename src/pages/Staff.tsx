@@ -19,6 +19,8 @@ import {
 import { cn, formatCurrency } from "../lib/utils";
 import { useApp } from "../context/AppContext";
 import { Link } from "react-router-dom";
+import { SegmentedTabs } from "../components/ui/ResponsivePrimitives";
+import { ResponsiveDialog } from "../components/ui/ResponsiveDialog";
 
 export default function Staff() {
   const { users, addUser, updateUser, deleteUser, staff, addStaff, updateStaff, deleteStaff, leaveRequests, addLeaveRequest, updateLeaveRequest, schoolSettings } = useApp();
@@ -167,21 +169,16 @@ export default function Staff() {
         </div>
       </div>
 
-      <div className="flex border-b border-gray-100 mb-6 gap-8">
-        {(["users", "staff", "leaves"] as const).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={cn(
-              "pb-4 text-sm font-bold uppercase tracking-widest transition-all relative",
-              activeTab === tab ? "text-blue-600" : "text-gray-400 hover:text-gray-600"
-            )}
-          >
-            {tab === "users" ? "System Access" : tab === "staff" ? "Staff Records" : "Leave Management"}
-            {activeTab === tab && <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-600 rounded-t-full" />}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        value={activeTab}
+        onChange={setActiveTab}
+        label="Staff workspace"
+        options={[
+          { value: "users", label: "System Access" },
+          { value: "staff", label: "Staff Records" },
+          { value: "leaves", label: "Leave Management" },
+        ]}
+      />
 
       {activeTab === "users" && (
         <>
@@ -228,7 +225,32 @@ export default function Staff() {
           </div>
 
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="divide-y divide-slate-200 md:hidden">
+              {filteredUsers.map((account) => (
+                <article key={account.id} className="app-mobile-record">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-50 font-bold text-blue-700">
+                      {account.name.charAt(0)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate font-semibold text-slate-950">{account.name}</h3>
+                      <p className="mt-1 truncate text-sm text-slate-500">{account.email}</p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold capitalize text-slate-700">
+                      {account.role}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => handleEdit(account)} className="app-button-secondary">Edit</button>
+                    <button type="button" onClick={() => handleDelete(account.id)} className="app-button-secondary text-rose-700 hover:bg-rose-50">Remove</button>
+                  </div>
+                </article>
+              ))}
+              {filteredUsers.length === 0 && (
+                <div className="px-4 py-12 text-center text-sm text-slate-500">No access accounts found.</div>
+              )}
+            </div>
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
@@ -277,8 +299,35 @@ export default function Staff() {
       )}
 
       {activeTab === "leaves" && (
-        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-          <table className="w-full text-left text-xs">
+        <div className="overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm">
+          <div className="divide-y divide-slate-200 md:hidden">
+            {leaveRequests.map((leave) => (
+              <article key={leave.id} className="app-mobile-record">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="truncate font-semibold text-slate-950">{leave.staffName}</h3>
+                    <p className="mt-1 text-sm text-slate-500">{leave.startDate} to {leave.endDate}</p>
+                  </div>
+                  <span className={cn(
+                    "shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold capitalize",
+                    leave.status === "approved" ? "bg-emerald-100 text-emerald-700" :
+                    leave.status === "rejected" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700",
+                  )}>
+                    {leave.status}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm text-slate-600"><span className="font-medium capitalize">{leave.type}</span> · Applied {leave.appliedDate}</p>
+                {leave.status === "pending" && (
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => updateLeaveRequest(leave.id, { status: "approved" })} className="app-button-secondary text-emerald-700">Approve</button>
+                    <button type="button" onClick={() => updateLeaveRequest(leave.id, { status: "rejected" })} className="app-button-secondary text-rose-700">Reject</button>
+                  </div>
+                )}
+              </article>
+            ))}
+            {leaveRequests.length === 0 && <div className="px-4 py-12 text-center text-sm text-slate-500">No leave requests.</div>}
+          </div>
+          <table className="hidden w-full text-left text-xs md:table">
             <thead className="bg-gray-50 font-black text-gray-400 uppercase tracking-widest">
               <tr>
                 <th className="px-6 py-6">Staff Member</th>
@@ -338,8 +387,36 @@ export default function Staff() {
       )}
 
       {activeTab === "staff" && (
-        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-          <table className="w-full text-left text-xs">
+        <div className="overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm">
+          <div className="divide-y divide-slate-200 md:hidden">
+            {filteredStaff.map((staffMember) => (
+              <article key={staffMember.id} className="app-mobile-record">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="truncate font-semibold text-slate-950">{staffMember.name}</h3>
+                    <p className="mt-1 text-sm text-slate-500">{staffMember.employeeId} · {staffMember.department}</p>
+                  </div>
+                  <span className={cn(
+                    "shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold",
+                    staffMember.status === "active" ? "bg-emerald-100 text-emerald-700" :
+                    staffMember.status === "on-leave" ? "bg-blue-100 text-blue-700" : "bg-rose-100 text-rose-700",
+                  )}>
+                    {staffMember.status}
+                  </span>
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-800">{formatCurrency(staffMember.salary, schoolSettings.currency || "UGX")}</p>
+                  <span className="text-sm text-slate-500">{staffMember.role}</span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => { setEditingStaff(staffMember); setStaffFormData(staffMember); setIsModalOpen(true); }} className="app-button-secondary">Edit</button>
+                  <button type="button" onClick={() => deleteStaff(staffMember.id)} className="app-button-secondary text-rose-700 hover:bg-rose-50">Remove</button>
+                </div>
+              </article>
+            ))}
+            {filteredStaff.length === 0 && <div className="px-4 py-12 text-center text-sm text-slate-500">No staff records found.</div>}
+          </div>
+          <table className="hidden w-full text-left text-xs md:table">
             <thead className="bg-gray-50 font-black text-gray-400 uppercase tracking-widest">
               <tr>
                 <th className="px-6 py-6">Employee</th>
@@ -386,16 +463,20 @@ export default function Staff() {
       )}
 
       {/* Leave Request Modal */}
-      {isLeaveModalOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setIsLeaveModalOpen(false)} />
-          <div className="relative bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
-            <div className="p-8 bg-gray-900 text-white">
-              <h3 className="text-2xl font-black uppercase tracking-tighter">Request Leave</h3>
-              <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Employee Time-Off Application</p>
-            </div>
-            
-            <form onSubmit={handleLeaveSubmit} className="p-8 space-y-5">
+      <ResponsiveDialog
+        open={isLeaveModalOpen}
+        title="Request Leave"
+        description="Submit an employee time-off application."
+        onClose={() => setIsLeaveModalOpen(false)}
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <button type="button" onClick={() => setIsLeaveModalOpen(false)} className="app-button-secondary">Cancel</button>
+            <button type="submit" form="leave-request-form" className="app-button-primary">Submit Request</button>
+          </>
+        }
+      >
+            <form id="leave-request-form" onSubmit={handleLeaveSubmit} className="space-y-5">
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Staff Member</label>
                 <select 
@@ -408,7 +489,7 @@ export default function Staff() {
                   {staff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.department})</option>)}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Start Date</label>
                   <input type="date" value={leaveFormData.startDate} onChange={e => setLeaveFormData({...leaveFormData, startDate: e.target.value})} className="w-full px-5 py-3 bg-gray-50 border border-gray-100 rounded-2xl outline-none font-bold" required />
@@ -431,29 +512,24 @@ export default function Staff() {
                 <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Reason</label>
                 <textarea value={leaveFormData.reason} onChange={e => setLeaveFormData({...leaveFormData, reason: e.target.value})} className="w-full px-5 py-3 bg-gray-50 border border-gray-100 rounded-2xl outline-none font-bold min-h-[100px]" required placeholder="State your reason clearly..." />
               </div>
-
-              <div className="flex gap-4 pt-4">
-                <button type="button" onClick={() => setIsLeaveModalOpen(false)} className="flex-1 py-4 bg-gray-100 text-gray-600 font-black rounded-2xl uppercase text-[10px] tracking-widest">Cancel</button>
-                <button type="submit" className="flex-[2] py-4 bg-blue-600 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest hover:bg-blue-700 shadow-xl shadow-blue-100">Submit Request</button>
-              </div>
             </form>
-          </div>
-        </div>
-      )}
+      </ResponsiveDialog>
 
       {/* Main Modal (User or Staff HR) */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
-          <div className="relative bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h3 className="text-xl font-bold text-gray-900">{editingStaff ? "Update" : "New"} {activeTab === "users" ? "Login Account" : "HR Record"}</h3>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 text-gray-400 hover:text-gray-900 rounded-lg">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <form onSubmit={activeTab === "users" ? handleSubmit : handleStaffSubmit} className="p-6 space-y-4">
+      <ResponsiveDialog
+        open={isModalOpen}
+        title={`${editingStaff ? "Update" : "New"} ${activeTab === "users" ? "Login Account" : "HR Record"}`}
+        description={activeTab === "users" ? "Manage system access and the user's assigned role." : "Manage the employee's work and payroll details."}
+        onClose={() => setIsModalOpen(false)}
+        maxWidth="max-w-lg"
+        footer={
+          <>
+            <button type="button" onClick={() => setIsModalOpen(false)} className="app-button-secondary">Cancel</button>
+            <button type="submit" form="staff-form" className="app-button-primary">{editingStaff ? "Save" : "Add"}</button>
+          </>
+        }
+      >
+            <form id="staff-form" onSubmit={activeTab === "users" ? handleSubmit : handleStaffSubmit} className="space-y-4">
               {activeTab === "users" ? (
                 <>
                   <div className="space-y-1">
@@ -483,7 +559,7 @@ export default function Staff() {
                 </>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase text-gray-400">Employee Name</label>
                       <input type="text" value={staffFormData.name} onChange={e => setStaffFormData({...staffFormData, name: e.target.value})} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg" required />
@@ -493,7 +569,7 @@ export default function Staff() {
                       <input type="text" value={staffFormData.employeeId} onChange={e => setStaffFormData({...staffFormData, employeeId: e.target.value})} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg" required />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase text-gray-400">Department</label>
                       <input type="text" value={staffFormData.department} onChange={e => setStaffFormData({...staffFormData, department: e.target.value})} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg" required />
@@ -503,7 +579,7 @@ export default function Staff() {
                       <input type="text" value={staffFormData.role} onChange={e => setStaffFormData({...staffFormData, role: e.target.value})} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg" required />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase text-gray-400">Monthly Salary</label>
                       <input type="number" value={staffFormData.salary} onChange={e => setStaffFormData({...staffFormData, salary: parseInt(e.target.value)})} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg font-black text-emerald-600" required />
@@ -519,14 +595,8 @@ export default function Staff() {
                   </div>
                 </>
               )}
-              <div className="flex gap-3 pt-4">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2 border border-gray-200 text-gray-600 font-medium rounded-lg hover:bg-gray-50">Cancel</button>
-                <button type="submit" className="flex-1 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-sm">{editingStaff ? "Save" : "Add"}</button>
-              </div>
             </form>
-          </div>
-        </div>
-      )}
+      </ResponsiveDialog>
     </div>
   );
 }

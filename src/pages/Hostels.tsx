@@ -275,7 +275,42 @@ export default function Hostels() {
 
         {activeTab === "rooms" && (
            <div className="p-0">
-             <table className="w-full text-left border-collapse">
+             <div className="divide-y divide-slate-200 md:hidden">
+               {dormRooms.map((room) => {
+                 const dorm = dormitories.find((entry) => entry.id === room.dormId);
+                 const occupied = room.occupants?.length || 0;
+                 const isFull = occupied >= room.capacity;
+                 return (
+                   <article key={room.id} className="app-mobile-record">
+                     <div className="flex items-start justify-between gap-3">
+                       <div>
+                         <h3 className="font-semibold text-slate-950">Room {room.roomNumber}</h3>
+                         <p className="mt-1 text-sm text-slate-500">{dorm?.name || "Unknown hostel"}</p>
+                       </div>
+                       <span className={cn(
+                         "rounded-full px-2.5 py-1 text-xs font-semibold",
+                         isFull ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700",
+                       )}>
+                         {isFull ? "Full" : `${room.capacity - occupied} available`}
+                       </span>
+                     </div>
+                     <p className="mt-3 text-sm text-slate-600">{occupied} of {room.capacity} beds occupied</p>
+                     <div className="mt-3 grid grid-cols-2 gap-2">
+                       <button type="button" onClick={() => {
+                         setEditingRoom(room);
+                         setRoomFormData({ dormId: room.dormId, roomNumber: room.roomNumber, capacity: room.capacity });
+                         setIsRoomModalOpen(true);
+                       }} className="app-button-secondary">Edit</button>
+                       <button type="button" onClick={() => {
+                         if (confirm("Delete this room?")) deleteDormRoom(room.id);
+                       }} className="app-button-secondary text-rose-700 hover:bg-rose-50">Delete</button>
+                     </div>
+                   </article>
+                 );
+               })}
+               {dormRooms.length === 0 && <div className="px-4 py-12 text-center text-sm text-slate-500">No rooms configured.</div>}
+             </div>
+             <table className="hidden w-full border-collapse text-left md:table">
                <thead>
                  <tr className="bg-gray-50/50 border-b border-gray-100">
                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Room Info</th>
@@ -378,7 +413,36 @@ export default function Hostels() {
                </button>
              </div>
 
-             <table className="w-full text-left border-collapse">
+             <div className="divide-y divide-slate-200 md:hidden">
+               {dormAllocations.map((allocation) => {
+                 const room = dormRooms.find((entry) => entry.id === allocation.roomId);
+                 const dorm = dormitories.find((entry) => entry.id === allocation.dormId);
+                 return (
+                   <article key={allocation.id} className="app-mobile-record">
+                     <div className="flex items-start justify-between gap-3">
+                       <div className="min-w-0">
+                         <h3 className="truncate font-semibold text-slate-950">{allocation.studentName}</h3>
+                         <p className="mt-1 text-sm text-slate-500">Room {room?.roomNumber || "---"} · {dorm?.name || "Unknown hostel"}</p>
+                       </div>
+                       <span className={cn(
+                         "shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold",
+                         allocation.status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600",
+                       )}>{allocation.status}</span>
+                     </div>
+                     <div className="mt-3 flex items-center justify-between gap-3">
+                       <span className="text-sm text-slate-500">Allocated {allocation.allocationDate}</span>
+                       {allocation.status === "active" && (
+                         <button type="button" onClick={() => {
+                           if (confirm(`Check out ${allocation.studentName}?`)) updateAllocation(allocation.id, { status: "checked-out" });
+                         }} className="app-button-secondary text-rose-700">Check Out</button>
+                       )}
+                     </div>
+                   </article>
+                 );
+               })}
+               {dormAllocations.length === 0 && <div className="px-4 py-12 text-center text-sm text-slate-500">No active allocations.</div>}
+             </div>
+             <table className="hidden w-full border-collapse text-left md:table">
                <thead>
                  <tr className="bg-gray-50/50 border-b border-gray-100">
                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Student</th>
@@ -456,9 +520,9 @@ export default function Hostels() {
 
       {/* Dorm Modal */}
       {isDormModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
           <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsDormModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl p-8 animate-in zoom-in-95 duration-200">
+          <div className="relative max-h-[calc(100dvh-0.5rem)] w-full max-w-md overflow-y-auto rounded-t-lg bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg sm:p-6">
             <h3 className="text-2xl font-black text-gray-900 uppercase tracking-tighter mb-6">
               {editingDorm ? "Update Hostel" : "Add New Hostel"}
             </h3>
@@ -475,7 +539,7 @@ export default function Hostels() {
                  />
                </div>
                
-               <div className="grid grid-cols-2 gap-4">
+               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Gender</label>
                     <select 
@@ -521,9 +585,9 @@ export default function Hostels() {
 
       {/* Room Modal */}
       {isRoomModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
           <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsRoomModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl p-8 animate-in zoom-in-95 duration-200">
+          <div className="relative max-h-[calc(100dvh-0.5rem)] w-full max-w-sm overflow-y-auto rounded-t-lg bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg sm:p-6">
             <h3 className="text-2xl font-black text-gray-900 uppercase tracking-tighter mb-6">
                {editingRoom ? "Update Room" : "Add New Room"}
             </h3>
@@ -540,7 +604,7 @@ export default function Hostels() {
                  </select>
                </div>
                
-               <div className="grid grid-cols-2 gap-4">
+               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Room No.</label>
                   <input 
@@ -574,9 +638,9 @@ export default function Hostels() {
 
       {/* Allocation Modal */}
       {isAllocationModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
           <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsAllocationModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl p-8 animate-in zoom-in-95 duration-200">
+          <div className="relative max-h-[calc(100dvh-0.5rem)] w-full max-w-md overflow-y-auto rounded-t-lg bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg sm:p-6">
              <div className="flex items-center gap-4 mb-6">
                 <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center">
                    <UserPlus className="w-6 h-6" />

@@ -211,8 +211,8 @@ export default function SickBay() {
 
       {/* New Entry Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+          <div className="max-h-[calc(100dvh-0.5rem)] w-full max-w-lg overflow-y-auto rounded-t-lg bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg">
             <div className="p-6 bg-rose-600 text-white flex justify-between items-center">
               <div>
                 <h3 className="text-xl font-bold">New Health Record</h3>
@@ -226,7 +226,7 @@ export default function SickBay() {
               </button>
             </div>
             
-            <form className="p-8 space-y-6" onSubmit={handleCreateRecord}>
+            <form className="space-y-6 p-4 sm:p-6" onSubmit={handleCreateRecord}>
               <div className="space-y-1.5 relative" onClick={(e) => e.stopPropagation()}>
                 <label className="text-sm font-bold text-gray-700 uppercase tracking-widest">Student</label>
                 <div className="relative">
@@ -324,7 +324,7 @@ export default function SickBay() {
                       type="button"
                       onClick={() => setFormData({ ...formData, status: s.id as any })}
                       className={cn(
-                        "py-2 px-3 rounded-lg border-2 text-[10px] font-bold uppercase transition-all",
+                        "min-h-11 rounded-lg border-2 px-3 py-2 text-[10px] font-bold uppercase transition-all",
                         formData.status === s.id 
                           ? "border-rose-600 bg-rose-50 text-rose-600" 
                           : "border-gray-50 bg-gray-50 text-gray-400 hover:border-gray-200"

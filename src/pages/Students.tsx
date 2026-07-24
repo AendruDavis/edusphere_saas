@@ -9,7 +9,6 @@ import {
   Phone,
   MapPin,
   Calendar,
-  X
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { Link } from "react-router-dom";
@@ -18,6 +17,7 @@ import * as z from "zod";
 import { cn } from "../lib/utils";
 import { useApp } from "../context/AppContext";
 import { uploadDataUrlAsset } from "../lib/api";
+import { ResponsiveDialog } from "../components/ui/ResponsiveDialog";
 
 const studentSchema = z.object({
   firstName: z.string().min(2, "First name is too short"),
@@ -223,7 +223,60 @@ export default function Students() {
 
       {/* Student List */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="divide-y divide-slate-200 md:hidden">
+          {filteredStudents.length === 0 ? (
+            <div className="px-4 py-12 text-center">
+              <p className="font-semibold text-slate-900">No students found</p>
+              <p className="mt-1 text-sm text-slate-500">Adjust the search or class filter.</p>
+            </div>
+          ) : (
+            filteredStudents.map((student: any) => {
+              const balance = getClassFees(student.class) - (student.totalFeesPaid || 0);
+              return (
+                <article key={student.id} className="app-mobile-record">
+                  <div className="flex items-start gap-3">
+                    {student.photo ? (
+                      <img src={student.photo} alt="" className="h-11 w-11 shrink-0 rounded-full object-cover" />
+                    ) : (
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-blue-700">
+                        {student.name ? student.name.charAt(0) : "?"}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <Link to={`/students/${student.id}`} className="block truncate font-semibold text-slate-950 hover:text-blue-700">
+                        {student.name}
+                      </Link>
+                      <p className="mt-0.5 text-sm text-slate-500">{student.reg} · {student.class}</p>
+                    </div>
+                    <span className={cn(
+                      "shrink-0 rounded-full px-2 py-1 text-xs font-semibold",
+                      student.status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600",
+                    )}>
+                      {student.status || "active"}
+                    </span>
+                  </div>
+                  <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <dt className="text-xs text-slate-500">Guardian</dt>
+                      <dd className="mt-0.5 truncate font-medium text-slate-800">{student.parent || "Not recorded"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-slate-500">Fees</dt>
+                      <dd className={cn("mt-0.5 font-semibold", balance > 0 ? "text-rose-700" : "text-emerald-700")}>
+                        {balance > 0 ? `UGX ${balance.toLocaleString()} due` : "Cleared"}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => handleEdit(student)} className="app-button-secondary">Edit</button>
+                    <button type="button" onClick={() => handleDelete(student.id)} className="app-button-secondary text-rose-700 hover:bg-rose-50">Remove</button>
+                  </div>
+                </article>
+              );
+            })
+          )}
+        </div>
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-50/50 border-b border-gray-100">
@@ -239,7 +292,7 @@ export default function Students() {
             <tbody className="divide-y divide-gray-100">
               {filteredStudents.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                     No students found matching your criteria.
                   </td>
                 </tr>
@@ -311,18 +364,21 @@ export default function Students() {
       </div>
 
       {/* Admission Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => { setIsModalOpen(false); setEditingStudent(null); }} />
-          <div className="relative bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h3 className="text-xl font-bold text-gray-900">{editingStudent ? "Update Student" : "Admission Form"}</h3>
-              <button onClick={() => { setIsModalOpen(false); setEditingStudent(null); }} className="p-2 text-gray-400 hover:text-gray-900 rounded-lg">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
+      <ResponsiveDialog
+        open={isModalOpen}
+        title={editingStudent ? "Update Student" : "Admission Form"}
+        description="Record the learner and guardian details required by the school."
+        onClose={() => { setIsModalOpen(false); setEditingStudent(null); }}
+        footer={
+          <>
+            <button type="button" onClick={() => setIsModalOpen(false)} className="app-button-secondary">Cancel</button>
+            <button type="submit" form="student-form" disabled={isCompressing} className="app-button-primary disabled:cursor-not-allowed disabled:opacity-50">
+              {isCompressing ? "Processing..." : editingStudent ? "Save Changes" : "Submit Admission"}
+            </button>
+          </>
+        }
+      >
+            <form id="student-form" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
               {/* Photo Upload Section */}
               <div className="flex flex-col items-center justify-center space-y-4 pb-6 border-b border-gray-100">
                 <div className="relative w-24 h-24 rounded-full bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden">
@@ -442,26 +498,8 @@ export default function Students() {
                 </div>
               </div>
 
-              <div className="flex gap-3 pt-4 border-t border-gray-100">
-                <button 
-                  type="button" 
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 px-4 py-2 border border-gray-200 text-gray-600 font-medium rounded-lg hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  disabled={isCompressing}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isCompressing ? "Processing..." : "Submit Admission"}
-                </button>
-              </div>
             </form>
-          </div>
-        </div>
-      )}
+      </ResponsiveDialog>
     </div>
   );
 }

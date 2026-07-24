@@ -17,10 +17,13 @@ import { useApp } from "../context/AppContext";
 import { uploadDataUrlAsset } from "../lib/api";
 import { useToast } from "../context/ToastContext";
 
+type SettingsSection = "profile" | "fees" | "grading" | "access" | "danger";
+
 export default function Settings() {
   const { schoolSettings, setSchoolSettings, users, updateUser } = useApp();
   const toast = useToast();
   const [isCompressing, setIsCompressing] = useState(false);
+  const [activeSection, setActiveSection] = useState<SettingsSection>("profile");
   const [newGrade, setNewGrade] = useState({ min: 0, grade: "A", comment: "Excellent" });
   const [localSettings, setLocalSettings] = useState({
     ...schoolSettings,
@@ -49,11 +52,24 @@ export default function Settings() {
       setLocalSettings(prev => ({
         ...prev,
         ...schoolSettings,
-        email: schoolSettings.email || prev.email,
-        phone: schoolSettings.phone || prev.phone,
-        address: schoolSettings.address || prev.address,
-        academicYear: schoolSettings.academicYear || prev.academicYear,
-        currency: schoolSettings.currency || prev.currency
+        name: schoolSettings.name || prev.name || "",
+        email: schoolSettings.email || prev.email || "",
+        phone: schoolSettings.phone || prev.phone || "",
+        address: schoolSettings.address || prev.address || "",
+        academicYear: schoolSettings.academicYear || prev.academicYear || "",
+        currency: schoolSettings.currency || prev.currency || "UGX",
+        motto: schoolSettings.motto || prev.motto || "",
+        deoCode: schoolSettings.deoCode || prev.deoCode || "",
+        tin: schoolSettings.tin || prev.tin || "",
+        primaryColor: schoolSettings.primaryColor || prev.primaryColor || "#0066CC",
+        secondaryColor: schoolSettings.secondaryColor || prev.secondaryColor || "#009900",
+        bankName: schoolSettings.bankName || prev.bankName || "",
+        bankAccount: schoolSettings.bankAccount || prev.bankAccount || "",
+        payCode: schoolSettings.payCode || prev.payCode || "",
+        reportFooter: schoolSettings.reportFooter || prev.reportFooter || "",
+        stampWarning: schoolSettings.stampWarning || prev.stampWarning || "",
+        classFees: schoolSettings.classFees || prev.classFees || {},
+        gradingScale: schoolSettings.gradingScale || prev.gradingScale || [],
       }));
     }
   }, [schoolSettings]);
@@ -192,26 +208,38 @@ export default function Settings() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 pb-10">
+    <div className="app-page mx-auto max-w-6xl">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">System Settings</h2>
-        <p className="text-gray-500 text-sm">Configure school branding, classes, and global preferences.</p>
+        <p className="app-page-kicker">Administration</p>
+        <h1 className="app-page-title">System Settings</h1>
+        <p className="app-page-subtitle">Configure school branding, classes, access, and global preferences.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <label className="app-panel block space-y-2 lg:hidden">
+        <span className="text-sm font-semibold text-slate-700">Settings section</span>
+        <select className="app-select" value={activeSection} onChange={(event) => setActiveSection(event.target.value as SettingsSection)}>
+          <option value="profile">School profile</option>
+          <option value="fees">Class fees</option>
+          <option value="grading">Grading scale</option>
+          <option value="access">User access</option>
+          <option value="danger">Danger zone</option>
+        </select>
+      </label>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
         {/* School Branding Section */}
-        <div className="lg:col-span-2 space-y-8">
-          <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm space-y-8">
+        <div className="space-y-6 lg:col-span-2 lg:space-y-8">
+          <div className={cn("app-panel space-y-6 sm:space-y-8", activeSection !== "profile" && "hidden lg:block")}>
             <div className="flex items-center gap-3 pb-6 border-b border-gray-100">
               <School className="w-6 h-6 text-blue-600" />
               <h3 className="text-xl font-bold text-gray-900">School Profile</h3>
             </div>
 
-            <div className="flex flex-col md:flex-row gap-8 items-start">
+            <div className="flex flex-col items-start gap-6 md:flex-row md:gap-8">
               {/* Logo Upload */}
               <div className="space-y-4">
                 <label className="text-sm font-bold text-gray-700 uppercase tracking-widest">School Badge / Logo</label>
-                <div className="relative w-40 h-40 rounded-3xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden group">
+                <div className="group relative flex h-32 w-32 items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 sm:h-40 sm:w-40">
                   {localSettings.logo ? (
                     <img src={localSettings.logo} alt="Logo" className="w-full h-full object-contain p-4" />
                   ) : (
@@ -241,7 +269,7 @@ export default function Settings() {
                   />
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-1">
                     <label className="text-sm font-medium text-gray-700">Currency</label>
                     <input 
@@ -330,7 +358,7 @@ export default function Settings() {
           </div>
 
           {/* Class Fees Section */}
-          <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm space-y-6">
+          <div className={cn("app-panel space-y-6", activeSection !== "fees" && "hidden lg:block")}>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
                 <School className="w-6 h-6" />
@@ -343,7 +371,7 @@ export default function Settings() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[400px] overflow-y-auto pr-2">
               {localSettings.classes.map((className) => (
-                <div key={className} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 space-y-2">
+                <div key={className} className="space-y-2 rounded-lg border border-gray-100 bg-gray-50 p-4">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{className}</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">
@@ -353,7 +381,7 @@ export default function Settings() {
                       type="number"
                       value={localSettings.classFees?.[className] || 0}
                       onChange={(e) => handleFeeChange(className, parseInt(e.target.value) || 0)}
-                      className="w-full pl-12 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-bold"
+                    className="app-input pl-12 font-semibold"
                     />
                   </div>
                 </div>
@@ -363,7 +391,7 @@ export default function Settings() {
             <div className="flex justify-end pt-4">
                <button 
                 onClick={saveBranding}
-                className="px-8 py-3 bg-emerald-600 text-white font-bold rounded-2xl hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-xl shadow-emerald-100"
+                className="app-button-primary w-full bg-emerald-600 hover:bg-emerald-700 sm:w-auto"
                >
                  <Save className="w-4 h-4" />
                  Update Fee Structure
@@ -372,20 +400,20 @@ export default function Settings() {
           </div>
 
           {/* Grading Scale Section */}
-          <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm transition-all hover:shadow-md">
+          <div className={cn("app-panel", activeSection !== "grading" && "hidden lg:block")}>
             <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
               <GraduationCap className="w-5 h-5 text-blue-600" />
               Grading Scale System
             </h3>
             <div className="space-y-4">
-              <div className="grid grid-cols-4 gap-3 bg-gray-50 p-4 rounded-2xl border border-gray-100">
+              <div className="grid grid-cols-1 gap-3 rounded-lg border border-gray-100 bg-gray-50 p-4 sm:grid-cols-4">
                 <div className="space-y-1">
                   <span className="text-[10px] font-black uppercase text-gray-400">Min %</span>
                   <input 
                     type="number" 
                     value={newGrade.min}
                     onChange={(e) => setNewGrade({ ...newGrade, min: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-lg outline-none text-sm"
+                    className="app-input"
                   />
                 </div>
                 <div className="space-y-1">
@@ -395,7 +423,7 @@ export default function Settings() {
                     value={newGrade.grade}
                     placeholder="A"
                     onChange={(e) => setNewGrade({ ...newGrade, grade: e.target.value })}
-                    className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-lg outline-none text-sm"
+                    className="app-input"
                   />
                 </div>
                 <div className="space-y-1">
@@ -405,20 +433,35 @@ export default function Settings() {
                     value={newGrade.comment}
                     placeholder="Excellent"
                     onChange={(e) => setNewGrade({ ...newGrade, comment: e.target.value })}
-                    className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-lg outline-none text-sm"
+                    className="app-input"
                   />
                 </div>
                 <div className="flex items-end">
                   <button 
                     onClick={addGrade}
-                    className="w-full py-1.5 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition-all text-xs"
+                    className="app-button-primary w-full"
                   >
                     Add
                   </button>
                 </div>
               </div>
               
-              <div className="border border-gray-50 rounded-2xl overflow-hidden shadow-inner">
+              <div className="space-y-3 sm:hidden">
+                {(localSettings.gradingScale || []).map((grade, index) => (
+                  <div key={`${grade.grade}-${grade.min}`} className="app-mobile-record flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-semibold text-slate-950">{grade.grade} from {grade.min}%</p>
+                      <p className="mt-1 text-sm text-slate-500">{grade.comment}</p>
+                    </div>
+                    <button type="button" onClick={() => removeGrade(index)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600" aria-label={`Remove grade ${grade.grade}`}>
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+                {(localSettings.gradingScale || []).length === 0 && <div className="app-empty-state">No grading scale defined.</div>}
+              </div>
+
+              <div className="hidden overflow-x-auto rounded-lg border border-gray-100 sm:block" role="region" aria-label="Grading scale" tabIndex={0}>
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-50 text-gray-500 font-bold uppercase tracking-tighter">
                     <tr>
@@ -435,7 +478,7 @@ export default function Settings() {
                         <td className="px-6 py-3"><span className="px-2 py-0.5 bg-gray-100 rounded-md font-black">{g.grade}</span></td>
                         <td className="px-6 py-3 text-gray-500 italic">{g.comment}</td>
                         <td className="px-6 py-3 text-right">
-                          <button onClick={() => removeGrade(i)} className="text-gray-300 hover:text-red-500 transition-colors p-1">
+                          <button onClick={() => removeGrade(i)} className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-500" aria-label={`Remove grade ${g.grade}`}>
                             <X className="w-4 h-4" />
                           </button>
                         </td>
@@ -455,7 +498,7 @@ export default function Settings() {
               <button 
                 onClick={saveBranding}
                 disabled={isCompressing}
-                className="inline-flex items-center gap-2 px-10 py-3 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="app-button-primary w-full sm:w-auto"
               >
                 <Save className="w-4 h-4" />
                 {isCompressing ? "Processing..." : "Save Configuration"}
@@ -466,7 +509,7 @@ export default function Settings() {
 
         {/* Role Management Section */}
         <div className="space-y-6">
-          <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-6">
+          <div className={cn("app-panel space-y-6", activeSection !== "access" && "hidden lg:block")}>
             <div className="flex items-center gap-3">
               <Shield className="w-6 h-6 text-purple-600" />
               <h3 className="text-lg font-bold text-gray-900">User Access</h3>
@@ -478,7 +521,7 @@ export default function Settings() {
 
             <div className="space-y-4">
               {users.map((user) => (
-                <div key={user.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 space-y-3">
+                <div key={user.id} className="space-y-3 rounded-lg border border-gray-100 bg-gray-50 p-4">
                   <div className="flex justify-between items-start">
                     <div>
                       <p className="text-sm font-bold text-gray-900">{user.name}</p>
@@ -489,13 +532,13 @@ export default function Settings() {
                     </div>
                   </div>
                   
-                  <div className="flex gap-1 overflow-x-auto pb-1">
+                  <div className="grid grid-cols-2 gap-2">
                     {["admin", "teacher", "accountant", "parent"].map((role) => (
                       <button 
                         key={role}
                         onClick={() => updateRole(user.id, role)}
                         className={cn(
-                          "px-2 py-1 rounded text-[9px] font-bold uppercase transition-all whitespace-nowrap",
+                          "min-h-11 rounded-lg px-2 py-2 text-xs font-semibold capitalize transition-colors",
                           user.role === role 
                             ? "bg-blue-600 text-white shadow-sm" 
                             : "bg-white text-gray-400 hover:bg-gray-200 border border-gray-100"
@@ -509,13 +552,13 @@ export default function Settings() {
               ))}
             </div>
 
-            <button className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-2xl text-xs font-bold text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-all flex items-center justify-center gap-2">
+            <button className="app-button-secondary w-full border-2 border-dashed">
               <UserCheck className="w-4 h-4" />
               Invite New User
             </button>
           </div>
 
-          <div className="bg-rose-900 text-white p-6 rounded-3xl shadow-xl space-y-4">
+          <div className={cn("space-y-4 rounded-lg bg-rose-900 p-6 text-white shadow-sm", activeSection !== "danger" && "hidden lg:block")}>
             <h4 className="text-sm font-bold flex items-center gap-2">
               <Shield className="w-4 h-4 text-rose-400" />
               Danger Zone
@@ -523,7 +566,7 @@ export default function Settings() {
             <p className="text-[11px] text-rose-200 leading-relaxed">
               Reset school data will permanently delete all students, transactions, and academic records. This action cannot be undone.
             </p>
-            <button className="w-full py-2 bg-rose-500 text-white text-xs font-bold rounded-xl hover:bg-rose-600 transition-colors">
+            <button className="app-button w-full bg-rose-500 text-white hover:bg-rose-600">
               Factory Reset System
             </button>
           </div>

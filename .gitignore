@@ -2,6 +2,8 @@ node_modules/
 build/
 dist/
 coverage/
+playwright-report/
+test-results/
 tmp/vite-build/
 tmp/vite-cache/
 tmp/server-build.cjs

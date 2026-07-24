@@ -3,6 +3,8 @@ import {
   AlertCircle,
   Award,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   FileText,
   Filter,
   Lock,
@@ -17,6 +19,7 @@ import { cn } from "../lib/utils";
 import { useApp } from "../context/AppContext";
 import { useToast } from "../context/ToastContext";
 import { Mark } from "../types";
+import { FormGrid, HorizontalScroller, SegmentedTabs } from "../components/ui/ResponsivePrimitives";
 
 type Draft = {
   a1: string;
@@ -110,6 +113,7 @@ export default function Grades() {
   const [selectedTerm, setSelectedTerm] = useState("Term 1");
   const [selectedYear, setSelectedYear] = useState(schoolSettings.academicYear || "2026/2027");
   const [searchQuery, setSearchQuery] = useState("");
+  const [mobileStudentIndex, setMobileStudentIndex] = useState(0);
   const [customSubject, setCustomSubject] = useState("");
   const [extraSubjects, setExtraSubjects] = useState<string[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
@@ -122,6 +126,11 @@ export default function Grades() {
     const query = searchQuery.toLowerCase();
     return student.class === selectedClass && (student.name.toLowerCase().includes(query) || student.reg.toLowerCase().includes(query));
   });
+  const mobileStudent = filteredStudents[mobileStudentIndex];
+
+  React.useEffect(() => {
+    setMobileStudentIndex((current) => Math.min(current, Math.max(0, filteredStudents.length - 1)));
+  }, [filteredStudents.length, searchQuery, selectedClass]);
 
   const studentMark = (studentId: string) => selectedMarks.find((mark) => mark.studentId === studentId);
   const canUnlock = currentUser?.role === "admin";
@@ -209,7 +218,7 @@ export default function Grades() {
           <button
             onClick={handleSaveMarks}
             disabled={Object.keys(drafts).length === 0}
-            className="app-button-primary"
+            className="app-button-primary hidden lg:inline-flex"
           >
             <Save className="h-5 w-5" />
             Commit Batch
@@ -218,29 +227,25 @@ export default function Grades() {
       </div>
 
       <div className="app-panel space-y-6">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="inline-flex rounded-xl bg-slate-100 p-1">
-            {(["entry", "reports", "analytics"] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={cn(
-                  "app-tab whitespace-nowrap",
-                  activeTab === tab && "app-tab-active",
-                )}
-              >
-                {tab === "entry" ? "Marks Matrix" : tab === "reports" ? "Report Terminal" : "Class Analytics"}
-              </button>
-            ))}
-          </div>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <SegmentedTabs
+            value={activeTab}
+            onChange={setActiveTab}
+            label="Academic record view"
+            options={[
+              { value: "entry", label: "Marks Entry" },
+              { value: "reports", label: "Reports" },
+              { value: "analytics", label: "Analytics" },
+            ]}
+          />
           <div className="flex-1" />
-          <div className="app-badge bg-blue-50 text-blue-700">
+          <div className="app-badge w-fit bg-blue-50 text-blue-700">
             <ShieldCheck className="h-4 w-4" />
             Backend RBAC + audit active
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <div className="space-y-3">
             <label className="ml-1 text-sm font-semibold text-slate-700">Class</label>
             <div className="relative">
@@ -251,29 +256,29 @@ export default function Grades() {
             </div>
           </div>
           <div className="space-y-3">
-            <label className="ml-1 text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Subject</label>
+            <label className="ml-1 text-sm font-semibold text-slate-700">Subject</label>
             <div className="relative">
               <Award className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-emerald-500" />
-              <select className="w-full appearance-none rounded-[1.5rem] border-none bg-gray-50 py-4 pl-10 pr-4 font-black text-gray-900 transition-all focus:ring-4 focus:ring-emerald-100" value={selectedSubject} onChange={(event) => setSelectedSubject(event.target.value)}>
+              <select className="app-select appearance-none pl-10" value={selectedSubject} onChange={(event) => setSelectedSubject(event.target.value)}>
                 {subjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
               </select>
             </div>
           </div>
           <div className="space-y-3">
-            <label className="ml-1 text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Term</label>
-            <select className="w-full rounded-[1.5rem] border-none bg-gray-50 px-4 py-4 font-black text-gray-900 transition-all focus:ring-4 focus:ring-blue-100" value={selectedTerm} onChange={(event) => setSelectedTerm(event.target.value)}>
+            <label className="ml-1 text-sm font-semibold text-slate-700">Term</label>
+            <select className="app-select" value={selectedTerm} onChange={(event) => setSelectedTerm(event.target.value)}>
               {TERMS.map((term) => <option key={term} value={term}>{term}</option>)}
             </select>
           </div>
           <div className="space-y-3">
-            <label className="ml-1 text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Year</label>
-            <input className="w-full rounded-[1.5rem] border-none bg-gray-50 px-4 py-4 font-black text-gray-900 transition-all focus:ring-4 focus:ring-blue-100" value={selectedYear} onChange={(event) => setSelectedYear(event.target.value)} />
+            <label className="ml-1 text-sm font-semibold text-slate-700">Year</label>
+            <input className="app-input" value={selectedYear} onChange={(event) => setSelectedYear(event.target.value)} />
           </div>
           <div className="space-y-3">
-            <label className="ml-1 text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Search</label>
+            <label className="ml-1 text-sm font-semibold text-slate-700">Search</label>
             <div className="relative">
               <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
-              <input className="w-full rounded-[1.5rem] border-none bg-gray-50 py-4 pl-12 pr-4 font-black text-gray-900 placeholder:text-gray-300 focus:ring-4 focus:ring-blue-100" placeholder="Name or reg..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
+              <input className="app-input pl-12" placeholder="Name or registration..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
             </div>
           </div>
         </div>
@@ -288,7 +293,99 @@ export default function Grades() {
       </div>
 
       {activeTab === "entry" && (
-        <div className="overflow-hidden rounded-[32px] border border-gray-100 bg-white shadow-2xl">
+        <>
+          <div className="space-y-4 lg:hidden">
+            {mobileStudent ? (() => {
+              const mark = studentMark(mobileStudent.id);
+              const draft = { ...draftFromMark(mark), ...drafts[mobileStudent.id] };
+              const computed = calculateDraft(draft, assessmentModel);
+              const grade = gradeFromScale(computed.finalScore, schoolSettings.gradingScale);
+              const isLocked = Boolean(mark?.locked);
+              const lockedForUser = isLocked && !canUnlock;
+              return (
+                <section className="app-panel space-y-5" aria-label={`Marks for ${mobileStudent.name}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      className="app-button-secondary w-11 px-0"
+                      aria-label="Previous student"
+                      disabled={mobileStudentIndex === 0}
+                      onClick={() => setMobileStudentIndex((current) => Math.max(0, current - 1))}
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                    </button>
+                    <div className="min-w-0 text-center">
+                      <p className="text-xs font-medium text-slate-500">Student {mobileStudentIndex + 1} of {filteredStudents.length}</p>
+                      <h2 className="truncate text-lg font-semibold text-slate-950">{mobileStudent.name}</h2>
+                      <p className="text-sm text-slate-500">{mobileStudent.reg} / {mobileStudent.class}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="app-button-secondary w-11 px-0"
+                      aria-label="Next student"
+                      disabled={mobileStudentIndex >= filteredStudents.length - 1}
+                      onClick={() => setMobileStudentIndex((current) => Math.min(filteredStudents.length - 1, current + 1))}
+                    >
+                      <ChevronRight className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
+                    <div className="h-full rounded-full bg-blue-600" style={{ width: `${((mobileStudentIndex + 1) / filteredStudents.length) * 100}%` }} />
+                  </div>
+
+                  <FormGrid>
+                    {(["a1", "a2", "a3", "a4"] as const).map((field, index) => (
+                      <label key={field} className="space-y-1.5 text-sm font-medium text-slate-700">
+                        Assessment {index + 1}
+                        <input
+                          type="number"
+                          min="0"
+                          max={courseworkMax}
+                          step={assessmentModel === "competency_3" ? 0.1 : 1}
+                          disabled={lockedForUser}
+                          className="app-input"
+                          value={draft[field]}
+                          onChange={(event) => updateDraft(mobileStudent.id, field, event.target.value, mark)}
+                        />
+                      </label>
+                    ))}
+                    <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                      Exam score
+                      <input type="number" min="0" max="100" disabled={lockedForUser} className="app-input" value={draft.examScore} onChange={(event) => updateDraft(mobileStudent.id, "examScore", event.target.value, mark)} />
+                    </label>
+                    <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                      Teacher initials
+                      <input maxLength={8} disabled={lockedForUser} className="app-input uppercase" value={draft.teacherInitials} onChange={(event) => updateDraft(mobileStudent.id, "teacherInitials", event.target.value.toUpperCase(), mark)} />
+                    </label>
+                  </FormGrid>
+
+                  <dl className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-4 sm:grid-cols-4">
+                    <MobileMetric label="Average" value={computed.avg ?? "--"} />
+                    <MobileMetric label="Final" value={computed.finalScore === null ? "--" : `${computed.finalScore}%`} />
+                    <MobileMetric label="Grade" value={grade.grade} />
+                    <MobileMetric label="Status" value={isLocked ? "Locked" : drafts[mobileStudent.id] ? "Draft" : "Pending"} />
+                  </dl>
+                  {mark && (
+                    <button type="button" className="app-button-secondary w-full" disabled={isLocked && !canUnlock} onClick={() => handleToggleLock(mark)}>
+                      {isLocked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+                      {isLocked ? "Reopen marks" : "Lock marks"}
+                    </button>
+                  )}
+                </section>
+              );
+            })() : (
+              <div className="app-empty-state">No students match the selected class and search.</div>
+            )}
+            <div className="sticky bottom-3 z-20">
+              <button onClick={handleSaveMarks} disabled={Object.keys(drafts).length === 0} className="app-button-primary w-full shadow-lg">
+                <Save className="h-5 w-5" />
+                Save {Object.keys(drafts).length || ""} Draft{Object.keys(drafts).length === 1 ? "" : "s"}
+              </button>
+            </div>
+          </div>
+
+          <div className="hidden overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm lg:block">
           <div className="flex flex-col gap-4 border-b border-gray-100 bg-gray-50/50 p-8 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-4">
               <div className="rounded-3xl bg-white p-4 text-indigo-600 shadow-sm">
@@ -307,7 +404,7 @@ export default function Grades() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <HorizontalScroller label="Marks matrix" showHint={false}>
             <table className="w-full min-w-[1180px] text-left">
               <thead>
                 <tr className="bg-white">
@@ -327,7 +424,7 @@ export default function Grades() {
 
                   return (
                     <tr key={student.id} className="transition-colors hover:bg-gray-50/50">
-                      <td className="px-8 py-5">
+                      <td className="sticky left-0 z-10 bg-white px-8 py-5">
                         <p className="text-sm font-black uppercase tracking-tight text-gray-900">{student.name}</p>
                         <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">{student.class}</p>
                       </td>
@@ -383,7 +480,7 @@ export default function Grades() {
                 })}
               </tbody>
             </table>
-          </div>
+          </HorizontalScroller>
 
           {filteredStudents.length === 0 && (
             <div className="py-32 text-center text-gray-300">
@@ -392,6 +489,7 @@ export default function Grades() {
             </div>
           )}
         </div>
+        </>
       )}
 
       {activeTab === "reports" && (
@@ -476,6 +574,15 @@ function PanelStat({ label, value }: { label: string; value: string }) {
     <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
       <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</p>
       <p className="text-lg font-black text-gray-900">{value}</p>
+    </div>
+  );
+}
+
+function MobileMetric({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="text-xs font-medium text-slate-500">{label}</dt>
+      <dd className="mt-1 text-base font-semibold text-slate-950">{value}</dd>
     </div>
   );
 }

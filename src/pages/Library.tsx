@@ -206,7 +206,37 @@ export default function Library() {
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <table className="w-full text-left">
+          <div className="divide-y divide-slate-200 md:hidden">
+            {borrowings.map((item) => (
+              <article key={item.id} className="app-mobile-record">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="truncate font-semibold text-slate-950">{item.studentName}</h3>
+                    <p className="mt-1 truncate text-sm text-slate-600">{item.bookTitle}</p>
+                  </div>
+                  <span className={cn(
+                    "shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold capitalize",
+                    item.status === "active" ? "bg-blue-50 text-blue-700" :
+                    item.status === "overdue" ? "bg-rose-50 text-rose-700" :
+                    item.status === "returned" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-700",
+                  )}>
+                    {item.status}
+                  </span>
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <span className="inline-flex items-center gap-2 text-sm text-slate-500">
+                    <Calendar className="h-4 w-4" aria-hidden="true" />
+                    Due {item.dueDate}
+                  </span>
+                  {item.status !== "returned" && (
+                    <button type="button" onClick={() => handleReturn(item.id)} className="app-button-secondary">Confirm Return</button>
+                  )}
+                </div>
+              </article>
+            ))}
+            {borrowings.length === 0 && <div className="px-4 py-12 text-center text-sm text-slate-500">No borrowing records.</div>}
+          </div>
+          <table className="hidden w-full text-left md:table">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Student</th>
@@ -256,8 +286,8 @@ export default function Library() {
 
       {/* Book Modal */}
       {isBookModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+          <div className="max-h-[calc(100dvh-0.5rem)] w-full max-w-md overflow-y-auto rounded-t-lg bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg">
             <div className="p-6 bg-blue-600 text-white flex justify-between items-center">
               <div>
                 <h3 className="text-xl font-bold">Add New Book</h3>
@@ -294,7 +324,7 @@ export default function Library() {
                   required
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700">Category</label>
                   <input 
@@ -341,8 +371,8 @@ export default function Library() {
 
       {/* Borrow Modal */}
       {isBorrowModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+          <div className="max-h-[calc(100dvh-0.5rem)] w-full max-w-md overflow-y-auto rounded-t-lg bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg">
             <div className="p-6 bg-blue-600 text-white flex justify-between items-center">
               <div>
                 <h3 className="text-xl font-bold">Lend a Book</h3>
@@ -403,7 +433,7 @@ export default function Library() {
                   required
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700">Lending Date</label>
                   <input 

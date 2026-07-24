@@ -9,21 +9,20 @@ import {
   ArrowDownRight,
   Filter,
   Search,
-  CheckCircle2,
   AlertCircle,
-  X,
   CreditCard,
-  User,
-  Hash
+  Trash2
 } from "lucide-react";
 import { cn, formatCurrency } from "../lib/utils";
 import { useApp } from "../context/AppContext";
-import { FeeStructure, Transaction } from "../types";
+import { ResponsiveDialog } from "../components/ui/ResponsiveDialog";
+import { FormGrid, HorizontalScroller, SegmentedTabs } from "../components/ui/ResponsivePrimitives";
 
 export default function Fees() {
   const { students, schoolSettings, transactions, recordFeePayment, feeStructures, addFeeStructure, updateFeeStructure, getClassFees } = useApp();
   const [activeTab, setActiveTab] = useState<"overview" | "payments" | "structure">("overview");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingFeeStructureId, setEditingFeeStructureId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedClass, setSelectedClass] = useState("All");
   const [feeStatusFilter, setFeeStatusFilter] = useState<"all" | "paid" | "partial" | "unpaid">("all");
@@ -86,8 +85,44 @@ export default function Fees() {
   const handleFeeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const total = feeFormData.items.reduce((s, i) => s + i.amount, 0);
-    await addFeeStructure({ ...feeFormData, totalAmount: total });
+    if (editingFeeStructureId) {
+      await updateFeeStructure(editingFeeStructureId, { ...feeFormData, totalAmount: total });
+    } else {
+      await addFeeStructure({ ...feeFormData, totalAmount: total });
+    }
     setIsModalOpen(false);
+    setEditingFeeStructureId(null);
+  };
+
+  const openPaymentDialog = (studentId = "") => {
+    setEditingFeeStructureId(null);
+    setPaymentFormData({
+      studentId,
+      amount: 0,
+      category: "tuition",
+      method: "Cash",
+      date: new Date().toISOString().split("T")[0],
+      description: "",
+    });
+    setIsModalOpen(true);
+  };
+
+  const openFeeStructureDialog = (feeStructure?: (typeof feeStructures)[number]) => {
+    setEditingFeeStructureId(feeStructure?.id || null);
+    setFeeFormData(feeStructure ? {
+      className: feeStructure.className,
+      term: feeStructure.term,
+      academicYear: feeStructure.academicYear,
+      items: feeStructure.items.length ? feeStructure.items : [{ name: "Tuition", amount: 0 }],
+      totalAmount: feeStructure.totalAmount,
+    } : {
+      className: schoolSettings.classes[0] || "",
+      term: "Term 1",
+      academicYear: schoolSettings.academicYear || "2026/2027",
+      items: [{ name: "Tuition", amount: 0 }],
+      totalAmount: 0,
+    });
+    setIsModalOpen(true);
   };
 
   const filteredPayments = studentPayments.filter(p => {
@@ -98,77 +133,70 @@ export default function Fees() {
   });
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-20">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="app-page">
+      <div className="app-page-header">
         <div>
-          <h2 className="text-3xl font-black text-gray-900 tracking-tight">Financial Treasury</h2>
-          <p className="text-gray-500 font-medium tracking-tight">Streamlined fee administration and automated payment tracking.</p>
+          <p className="app-page-kicker">Finance</p>
+          <h1 className="app-page-title">Fees and Payments</h1>
+          <p className="app-page-subtitle">Manage balances, collections, and class fee structures.</p>
         </div>
-        <div className="flex gap-2">
-          <button 
-            onClick={() => {
-              setPaymentFormData({ studentId: "", amount: 0, category: "tuition", method: "Cash", date: new Date().toISOString().split('T')[0], description: "" });
-              setIsModalOpen(true);
-            }}
-            className="flex items-center gap-3 px-8 py-4 bg-gray-900 text-white rounded-[2rem] text-xs font-black uppercase tracking-widest hover:bg-gray-800 shadow-2xl shadow-gray-200 transition-all active:scale-95"
+          <button
+            onClick={() => activeTab === "structure" ? openFeeStructureDialog() : openPaymentDialog()}
+            className="app-button-primary"
           >
             <Plus className="w-5 h-5" />
-            Collect Fees
+            {activeTab === "structure" ? "Add fee structure" : "Collect fees"}
           </button>
-        </div>
       </div>
 
       {/* Dynamic Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <button onClick={() => setFeeStatusFilter("all")} className={cn(
-          "bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm relative overflow-hidden group transition-all text-left",
-          feeStatusFilter === "all" ? "ring-4 ring-blue-100 border-blue-200" : ""
+          "app-card text-left",
+          feeStatusFilter === "all" ? "border-blue-300 ring-2 ring-blue-100" : ""
         )}>
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Total Expected</p>
-          <div className="flex items-center justify-between relative z-10">
-            <h3 className="text-4xl font-black text-gray-900 leading-none">{formatCurrency(totalExpected, schoolSettings.currency || "UGX")}</h3>
-            <div className="p-4 bg-blue-50 text-blue-600 rounded-3xl group-hover:rotate-12 transition-transform">
-              <Wallet className="w-8 h-8" />
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-slate-500">Expected</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-950">{formatCurrency(totalExpected, schoolSettings.currency || "UGX")}</p>
             </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Wallet className="h-5 w-5" /></div>
           </div>
-          <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-4">Based on Class Settings</p>
-          <div className="absolute -right-4 -bottom-4 w-32 h-32 bg-blue-50/50 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
+          <p className="mt-2 text-xs text-slate-500">Based on class settings</p>
         </button>
 
         <button onClick={() => setFeeStatusFilter("paid")} className={cn(
-          "bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm relative overflow-hidden group transition-all text-left",
-          feeStatusFilter === "paid" ? "ring-4 ring-emerald-100 border-emerald-200" : ""
+          "app-card text-left",
+          feeStatusFilter === "paid" ? "border-emerald-300 ring-2 ring-emerald-100" : ""
         )}>
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Total Collected</p>
-          <div className="flex items-center justify-between relative z-10">
-            <h3 className="text-4xl font-black text-emerald-600 leading-none">{formatCurrency(totalPaid, schoolSettings.currency || "UGX")}</h3>
-            <div className="p-4 bg-emerald-50 text-emerald-600 rounded-3xl group-hover:rotate-12 transition-transform">
-              <ArrowUpRight className="w-8 h-8" />
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-slate-500">Collected</p>
+              <p className="mt-2 text-2xl font-semibold text-emerald-600">{formatCurrency(totalPaid, schoolSettings.currency || "UGX")}</p>
             </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600"><ArrowUpRight className="h-5 w-5" /></div>
           </div>
-          <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mt-4">Automated Ledger Link</p>
-          <div className="absolute -right-4 -bottom-4 w-32 h-32 bg-emerald-50/50 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
+          <p className="mt-2 text-xs text-slate-500">Posted to the ledger</p>
         </button>
 
         <button onClick={() => setFeeStatusFilter("unpaid")} className={cn(
-          "bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm relative overflow-hidden group transition-all text-left",
-          feeStatusFilter === "unpaid" ? "ring-4 ring-rose-100 border-rose-200" : ""
+          "app-card text-left",
+          feeStatusFilter === "unpaid" ? "border-rose-300 ring-2 ring-rose-100" : ""
         )}>
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Total Balance</p>
-          <div className="flex items-center justify-between relative z-10">
-            <h3 className="text-4xl font-black text-rose-600 leading-none">{formatCurrency(totalOutstanding, schoolSettings.currency || "UGX")}</h3>
-            <div className="p-4 bg-rose-50 text-rose-600 rounded-3xl group-hover:rotate-12 transition-transform">
-              <AlertCircle className="w-8 h-8" />
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-slate-500">Outstanding</p>
+              <p className="mt-2 text-2xl font-semibold text-rose-600">{formatCurrency(totalOutstanding, schoolSettings.currency || "UGX")}</p>
             </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-rose-50 text-rose-600"><AlertCircle className="h-5 w-5" /></div>
           </div>
-          <p className="text-[10px] font-bold text-rose-600 uppercase tracking-widest mt-4">Immediate Attention Required</p>
-          <div className="absolute -right-4 -bottom-4 w-32 h-32 bg-rose-50/50 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
+          <p className="mt-2 text-xs text-slate-500">Requires follow-up</p>
         </button>
       </div>
 
       {/* Enhanced Filters */}
-      <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="app-panel">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <div className="md:col-span-2 relative group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-blue-600 transition-colors" />
             <input 
@@ -176,7 +204,7 @@ export default function Fees() {
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search student or reference..." 
-              className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl text-sm font-bold focus:ring-4 focus:ring-blue-100 transition-all placeholder:text-gray-300" 
+              className="app-input pl-12"
             />
           </div>
           <div className="relative group">
@@ -184,7 +212,7 @@ export default function Fees() {
              <select 
                value={selectedClass} 
                onChange={e => setSelectedClass(e.target.value)}
-               className="w-full pl-10 pr-4 py-4 bg-gray-50 border-none rounded-2xl text-sm font-black text-gray-900 focus:ring-4 focus:ring-blue-100 transition-all appearance-none"
+               className="app-select appearance-none pl-10"
              >
                <option value="All">All Classes</option>
                {schoolSettings.classes.map(c => <option key={c} value={c}>{c}</option>)}
@@ -195,7 +223,7 @@ export default function Fees() {
              <select 
                value={feeStatusFilter} 
                onChange={e => setFeeStatusFilter(e.target.value as any)}
-               className="w-full pl-10 pr-4 py-4 bg-gray-50 border-none rounded-2xl text-sm font-black text-gray-900 focus:ring-4 focus:ring-blue-100 transition-all appearance-none"
+               className="app-select appearance-none pl-10"
              >
                <option value="all">Any Payment Status</option>
                <option value="paid">Fully Paid</option>
@@ -207,26 +235,47 @@ export default function Fees() {
       </div>
 
       {/* Tab Switcher */}
-      <div className="bg-white p-1 rounded-3xl inline-flex border border-gray-100 shadow-sm overflow-x-auto max-w-full">
-        {(["overview", "payments", "structure"] as const).map(tab => (
-          <button 
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={cn(
-              "px-10 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all",
-              activeTab === tab 
-                ? "bg-gray-900 text-white shadow-lg" 
-                : "text-gray-400 hover:text-gray-600"
-            )}
-          >
-            {tab === "overview" ? "Student Balances" : tab === "payments" ? "Collection Ledger" : "Fee Config"}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        value={activeTab}
+        onChange={setActiveTab}
+        label="Fees view"
+        options={[
+          { value: "overview", label: "Student balances" },
+          { value: "payments", label: "Collection ledger" },
+          { value: "structure", label: "Fee configuration" },
+        ]}
+        className="w-fit"
+      />
 
       {/* Main Content Areas */}
       {activeTab === "overview" && (
-        <div className="bg-white rounded-[40px] border border-gray-100 shadow-xl overflow-hidden">
+        <div className="overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm">
+          <div className="space-y-3 bg-slate-50/60 p-3 md:hidden">
+            {studentsWithBalance.map((student) => {
+              const expected = getClassFees(student.class);
+              const paid = student.totalFeesPaid;
+              const balance = expected - paid;
+              return (
+                <button key={student.id} type="button" className="app-mobile-record w-full text-left" onClick={() => openPaymentDialog(student.id)}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-slate-950">{student.name}</p>
+                      <p className="mt-1 text-sm text-slate-500">{student.reg} / {student.class}</p>
+                    </div>
+                    <span className={cn("app-badge", balance <= 0 ? "bg-emerald-50 text-emerald-700" : paid > 0 ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700")}>
+                      {balance <= 0 ? "Cleared" : formatCurrency(balance, schoolSettings.currency || "UGX")}
+                    </span>
+                  </div>
+                  <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+                    <div><dt className="text-xs text-slate-500">Expected</dt><dd className="mt-1 font-medium text-slate-800">{formatCurrency(expected, schoolSettings.currency || "UGX")}</dd></div>
+                    <div><dt className="text-xs text-slate-500">Paid</dt><dd className="mt-1 font-medium text-emerald-700">{formatCurrency(paid, schoolSettings.currency || "UGX")}</dd></div>
+                  </dl>
+                </button>
+              );
+            })}
+            {studentsWithBalance.length === 0 && <div className="app-empty-state bg-white">No student balances match the current filters.</div>}
+          </div>
+          <HorizontalScroller label="Student fee balances" showHint={false} className="hidden md:block">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-gray-50/50">
@@ -245,8 +294,7 @@ export default function Fees() {
 
                 return (
                   <tr key={student.id} className="hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => {
-                     setPaymentFormData({...paymentFormData, studentId: student.id});
-                     setIsModalOpen(true);
+                     openPaymentDialog(student.id);
                   }}>
                     <td className="px-8 py-6">
                       <div className="flex items-center gap-4">
@@ -291,12 +339,31 @@ export default function Fees() {
               )}
             </tbody>
           </table>
+          </HorizontalScroller>
         </div>
       )}
 
       {/* Rest of the Tabs (Payments, Structure) and Modals - abbreviated for space but keeping logic */}
       {activeTab === "payments" && (
-        <div className="bg-white rounded-[40px] border border-gray-100 shadow-xl overflow-hidden">
+        <div className="overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm">
+          <div className="space-y-3 bg-slate-50/60 p-3 md:hidden">
+            {filteredPayments.map((payment) => {
+              const student = students.find((entry) => entry.id === payment.studentId);
+              return (
+                <div key={payment.id} className="app-mobile-record">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-slate-950">{student?.name || "Unknown student"}</p>
+                      <p className="mt-1 text-sm text-slate-500">{payment.date} / {payment.reference || "No reference"}</p>
+                    </div>
+                    <p className="shrink-0 font-semibold text-emerald-700">{formatCurrency(payment.amount, schoolSettings.currency || "UGX")}</p>
+                  </div>
+                </div>
+              );
+            })}
+            {filteredPayments.length === 0 && <div className="app-empty-state bg-white">No collection records match the current filters.</div>}
+          </div>
+          <HorizontalScroller label="Fee collection ledger" showHint={false} className="hidden md:block">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-gray-50/50">
@@ -343,70 +410,144 @@ export default function Fees() {
               })}
             </tbody>
           </table>
+          </HorizontalScroller>
         </div>
       )}
 
-      {/* Modals - Keeping the previous logic but improving styling */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-xl" onClick={() => setIsModalOpen(false)} />
-          <div className="relative bg-white rounded-[48px] w-full max-w-xl shadow-[0_0_100px_-12px_rgba(0,0,0,0.25)] overflow-hidden animate-in fade-in zoom-in duration-300 border border-white/20">
-            <div className="p-10 bg-gray-900 text-white flex justify-between items-start text-left relative overflow-hidden">
-              <div className="relative z-10">
-                <h3 className="text-3xl font-black uppercase tracking-tighter leading-none mb-2">
-                  {activeTab === "structure" ? "Config Protocol" : "Financial Entry"}
-                </h3>
-                <p className="text-blue-400/50 text-[10px] font-black uppercase tracking-[0.5em]">Treasury System Active</p>
+      {activeTab === "structure" && (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {feeStructures.map((feeStructure) => (
+            <button key={feeStructure.id} type="button" className="app-card text-left" onClick={() => openFeeStructureDialog(feeStructure)}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold text-slate-950">{feeStructure.className}</h2>
+                  <p className="mt-1 text-sm text-slate-500">{feeStructure.term} / {feeStructure.academicYear}</p>
+                </div>
+                <span className="font-semibold text-blue-700">{formatCurrency(feeStructure.totalAmount, schoolSettings.currency || "UGX")}</span>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="p-4 bg-white/10 hover:bg-white text-white hover:text-black rounded-3xl transition-all relative z-10"><X className="w-8 h-8" /></button>
-              <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600 rounded-full blur-[100px] opacity-20 -translate-y-1/2 translate-x-1/2" />
-            </div>
-            
-            <form onSubmit={activeTab === "structure" ? handleFeeSubmit : handlePaymentSubmit} className="p-10 space-y-8">
-               {/* Form fields identical to original but with cleaner spacing/rounding */}
-               {activeTab !== "structure" ? (
-                 <>
-                   <div className="space-y-4">
-                     <label className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 flex items-center gap-2">
-                       <User className="w-3 h-3" />
-                       Payer Account
-                     </label>
-                     <select value={paymentFormData.studentId} onChange={e => setPaymentFormData({...paymentFormData, studentId: e.target.value})} className="w-full px-6 py-4 bg-gray-50 border-none rounded-[2rem] font-black text-gray-900 focus:ring-4 focus:ring-blue-100 transition-all appearance-none" required>
-                       <option value="">Select Student...</option>
-                       {students.map(s => (
-                         <option key={s.id} value={s.id}>
-                           {s.name} ({s.reg}) - Arrears: {getClassFees(s.class) - s.totalFeesPaid} {schoolSettings.currency}
-                         </option>
-                       ))}
-                     </select>
-                   </div>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                     <div className="space-y-4">
-                       <label className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Payment Value</label>
-                       <div className="relative">
-                         <span className="absolute left-6 top-1/2 -translate-y-1/2 font-black text-emerald-600">{schoolSettings.currency}</span>
-                         <input type="number" required value={paymentFormData.amount} onChange={e => setPaymentFormData({...paymentFormData, amount: parseInt(e.target.value) || 0})} className="w-full pl-20 pr-6 py-4 bg-gray-50 border-none rounded-[2rem] font-black text-emerald-600 text-2xl focus:ring-4 focus:ring-emerald-100 transition-all" />
-                       </div>
-                     </div>
-                     <div className="space-y-4">
-                       <label className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Transaction Date</label>
-                       <input type="date" value={paymentFormData.date} onChange={e => setPaymentFormData({...paymentFormData, date: e.target.value})} className="w-full px-6 py-4 bg-gray-50 border-none rounded-[2rem] font-black text-gray-900 focus:ring-4 focus:ring-blue-100 transition-all" />
-                     </div>
-                   </div>
-                 </>
-               ) : (
-                 <div className="text-center py-10">
-                    <p className="text-gray-400 font-bold uppercase tracking-widest">Fee Structure form abbreviated for space - logic unchanged.</p>
-                 </div>
-               )}
-               <div className="flex gap-4 pt-6">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-5 bg-gray-100 text-gray-400 font-black rounded-[2rem] uppercase text-[10px] tracking-[0.4em] transition-all hover:bg-gray-200">Terminal Logout</button>
-                <button type="submit" className="flex-[2] py-5 bg-gray-900 text-white font-black rounded-[2rem] uppercase text-[10px] tracking-[0.4em] hover:bg-blue-600 shadow-2xl shadow-blue-100 active:scale-95 transition-all">Authorize Entry</button>
-              </div>
-            </form>
-          </div>
+              <p className="mt-4 text-sm text-slate-600">{feeStructure.items.length} fee item{feeStructure.items.length === 1 ? "" : "s"}</p>
+            </button>
+          ))}
+          {feeStructures.length === 0 && (
+            <button type="button" className="app-empty-state min-h-40 text-left" onClick={() => openFeeStructureDialog()}>
+              <span className="block font-semibold text-slate-700">No fee structures configured</span>
+              <span className="mt-1 block font-normal text-slate-500">Add the first class fee structure.</span>
+            </button>
+          )}
         </div>
       )}
+
+      <ResponsiveDialog
+        open={isModalOpen}
+        title={activeTab === "structure" ? (editingFeeStructureId ? "Edit fee structure" : "New fee structure") : "Record fee payment"}
+        description={activeTab === "structure" ? "Define the charges for a class, term, and academic year." : "Record a verified payment against a student account."}
+        onClose={() => { setIsModalOpen(false); setEditingFeeStructureId(null); }}
+        maxWidth="max-w-xl"
+        footer={(
+          <>
+            <button type="button" className="app-button-secondary" onClick={() => { setIsModalOpen(false); setEditingFeeStructureId(null); }}>Cancel</button>
+            <button type="submit" form="fees-entry-form" className="app-button-primary">
+              {activeTab === "structure" ? (editingFeeStructureId ? "Update structure" : "Save structure") : "Record payment"}
+            </button>
+          </>
+        )}
+      >
+        <form id="fees-entry-form" onSubmit={activeTab === "structure" ? handleFeeSubmit : handlePaymentSubmit} className="space-y-4">
+          {activeTab !== "structure" ? (
+            <>
+              <label className="block space-y-1.5 text-sm font-medium text-slate-700">
+                Student
+                <select value={paymentFormData.studentId} onChange={(event) => setPaymentFormData({ ...paymentFormData, studentId: event.target.value })} className="app-select" required>
+                  <option value="">Select student</option>
+                  {students.map((student) => (
+                    <option key={student.id} value={student.id}>
+                      {student.name} ({student.reg}) - Balance {formatCurrency(getClassFees(student.class) - student.totalFeesPaid, schoolSettings.currency || "UGX")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <FormGrid>
+                <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                  Amount ({schoolSettings.currency || "UGX"})
+                  <input type="number" min="1" required value={paymentFormData.amount} onChange={(event) => setPaymentFormData({ ...paymentFormData, amount: Number(event.target.value) || 0 })} className="app-input" />
+                </label>
+                <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                  Transaction date
+                  <input type="date" required value={paymentFormData.date} onChange={(event) => setPaymentFormData({ ...paymentFormData, date: event.target.value })} className="app-input" />
+                </label>
+                <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                  Payment method
+                  <select value={paymentFormData.method} onChange={(event) => setPaymentFormData({ ...paymentFormData, method: event.target.value })} className="app-select">
+                    <option>Cash</option>
+                    <option>Mobile Money</option>
+                    <option>Bank Transfer</option>
+                    <option>Cheque</option>
+                  </select>
+                </label>
+                <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                  Category
+                  <select value={paymentFormData.category} onChange={(event) => setPaymentFormData({ ...paymentFormData, category: event.target.value })} className="app-select">
+                    <option value="tuition">Tuition</option>
+                    <option value="boarding">Boarding</option>
+                    <option value="transport">Transport</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+              </FormGrid>
+              <label className="block space-y-1.5 text-sm font-medium text-slate-700">
+                Note
+                <textarea value={paymentFormData.description} onChange={(event) => setPaymentFormData({ ...paymentFormData, description: event.target.value })} className="app-input min-h-24 resize-y" placeholder="Optional payment note" />
+              </label>
+            </>
+          ) : (
+            <>
+              <FormGrid>
+                <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                  Class
+                  <select required className="app-select" value={feeFormData.className} onChange={(event) => setFeeFormData({ ...feeFormData, className: event.target.value })}>
+                    <option value="">Select class</option>
+                    {schoolSettings.classes.map((className) => <option key={className} value={className}>{className}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                  Term
+                  <select className="app-select" value={feeFormData.term} onChange={(event) => setFeeFormData({ ...feeFormData, term: event.target.value })}>
+                    <option>Term 1</option>
+                    <option>Term 2</option>
+                    <option>Term 3</option>
+                  </select>
+                </label>
+                <label className="space-y-1.5 text-sm font-medium text-slate-700 sm:col-span-2">
+                  Academic year
+                  <input required className="app-input" value={feeFormData.academicYear} onChange={(event) => setFeeFormData({ ...feeFormData, academicYear: event.target.value })} />
+                </label>
+              </FormGrid>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold text-slate-900">Fee items</h3>
+                  <button type="button" className="app-button-secondary" onClick={() => setFeeFormData({ ...feeFormData, items: [...feeFormData.items, { name: "", amount: 0 }] })}>
+                    <Plus className="h-4 w-4" />
+                    Add item
+                  </button>
+                </div>
+                {feeFormData.items.map((item, index) => (
+                  <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(0,140px)_44px] gap-2">
+                    <input required aria-label={`Fee item ${index + 1} name`} className="app-input" placeholder="Fee name" value={item.name} onChange={(event) => setFeeFormData({ ...feeFormData, items: feeFormData.items.map((entry, itemIndex) => itemIndex === index ? { ...entry, name: event.target.value } : entry) })} />
+                    <input required aria-label={`Fee item ${index + 1} amount`} type="number" min="0" className="app-input" value={item.amount} onChange={(event) => setFeeFormData({ ...feeFormData, items: feeFormData.items.map((entry, itemIndex) => itemIndex === index ? { ...entry, amount: Number(event.target.value) || 0 } : entry) })} />
+                    <button type="button" className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600" aria-label={`Remove fee item ${index + 1}`} disabled={feeFormData.items.length === 1} onClick={() => setFeeFormData({ ...feeFormData, items: feeFormData.items.filter((_, itemIndex) => itemIndex !== index) })}>
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3">
+                  <span className="text-sm font-medium text-slate-600">Total</span>
+                  <span className="font-semibold text-slate-950">{formatCurrency(feeFormData.items.reduce((sum, item) => sum + item.amount, 0), schoolSettings.currency || "UGX")}</span>
+                </div>
+              </div>
+            </>
+          )}
+        </form>
+      </ResponsiveDialog>
     </div>
   );
 }

@@ -10,7 +10,6 @@ import {
   FileText,
   Calendar as CalendarIcon,
   Filter,
-  X,
   Printer,
   MessageSquare
 } from "lucide-react";
@@ -19,6 +18,8 @@ import { apiRequest } from "../lib/api";
 import { useApp } from "../context/AppContext";
 import { useToast } from "../context/ToastContext";
 import { Transaction } from "../types";
+import { ResponsiveDialog } from "../components/ui/ResponsiveDialog";
+import { SegmentedTabs } from "../components/ui/ResponsivePrimitives";
 
 export default function Finance() {
   const { transactions, addTransaction, students, schoolSettings, expenses, addExpense } = useApp();
@@ -121,8 +122,8 @@ export default function Finance() {
       </div>
 
       {/* Financial Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-6">
+        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex items-center gap-4 mb-4">
             <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
               <TrendingUp className="w-6 h-6" />
@@ -134,7 +135,7 @@ export default function Finance() {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex items-center gap-4 mb-4">
             <div className="p-3 bg-rose-50 text-rose-600 rounded-xl">
               <TrendingDown className="w-6 h-6" />
@@ -146,7 +147,7 @@ export default function Finance() {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex items-center gap-4 mb-4">
             <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
               <DollarSign className="w-6 h-6" />
@@ -159,21 +160,16 @@ export default function Finance() {
         </div>
       </div>
 
-      <div className="flex border-b border-gray-100 gap-8">
-        {(["all", "expenses", "fees"] as const).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={cn(
-              "pb-4 text-sm font-bold uppercase tracking-widest transition-all relative",
-              activeTab === tab ? "text-blue-600" : "text-gray-400 hover:text-gray-600"
-            )}
-          >
-            {tab}
-            {activeTab === tab && <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-600 rounded-t-full" />}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        value={activeTab}
+        onChange={setActiveTab}
+        label="Transaction type"
+        options={[
+          { value: "all", label: "All" },
+          { value: "expenses", label: "Expenses" },
+          { value: "fees", label: "Fees" },
+        ]}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Transaction Table */}
@@ -190,7 +186,45 @@ export default function Finance() {
           </div>
 
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="divide-y divide-slate-200 md:hidden">
+              {filteredTransactions.map((transaction) => (
+                <article key={transaction.id} className="app-mobile-record">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate font-semibold text-slate-950">{transaction.category}</h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {transaction.studentId ? students.find((student) => student.id === transaction.studentId)?.name || "Unknown student" : transaction.date}
+                      </p>
+                    </div>
+                    <p className={cn(
+                      "shrink-0 text-sm font-bold",
+                      transaction.type === "income" ? "text-emerald-700" : "text-rose-700",
+                    )}>
+                      {transaction.type === "income" ? "+" : "-"} {formatCurrency(transaction.amount, schoolSettings.currency || "UGX")}
+                    </p>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <span className="text-sm text-slate-500">{transaction.date}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTx(transaction)}
+                      className="app-button-secondary"
+                      aria-label={`View receipt for ${transaction.category}`}
+                    >
+                      <FileText className="h-4 w-4" />
+                      Receipt
+                    </button>
+                  </div>
+                </article>
+              ))}
+              {filteredTransactions.length === 0 && (
+                <div className="px-4 py-12 text-center">
+                  <p className="font-semibold text-slate-900">No transactions</p>
+                  <p className="mt-1 text-sm text-slate-500">Records matching this view will appear here.</p>
+                </div>
+              )}
+            </div>
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
@@ -288,26 +322,26 @@ export default function Finance() {
       </div>
 
       {/* Transaction Modal */}
-      {isTxModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className={cn(
-              "p-6 text-white flex justify-between items-center",
-              txForm.type === 'income' ? "bg-emerald-600" : "bg-blue-600"
-            )}>
-              <div>
-                <h3 className="text-xl font-bold">Record {txForm.type === 'income' ? 'Collection' : 'Expenditure'}</h3>
-                <p className="text-white/80 text-xs">Enter financial record details</p>
-              </div>
-              <button 
-                onClick={() => setIsTxModalOpen(false)}
-                className="p-2 hover:bg-white/10 rounded-full transition-colors"
-               >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <form className="p-6 space-y-4" onSubmit={handleTxSubmit}>
+      <ResponsiveDialog
+        open={isTxModalOpen}
+        title={`Record ${txForm.type === "income" ? "Collection" : "Expenditure"}`}
+        description="Enter the transaction details for the school ledger."
+        onClose={() => setIsTxModalOpen(false)}
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <button type="button" onClick={() => setIsTxModalOpen(false)} className="app-button-secondary">Cancel</button>
+            <button
+              type="submit"
+              form="transaction-form"
+              className={cn("app-button-primary", txForm.type === "income" && "bg-emerald-600 hover:bg-emerald-700")}
+            >
+              Save Record
+            </button>
+          </>
+        }
+      >
+            <form id="transaction-form" className="space-y-4" onSubmit={handleTxSubmit}>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-gray-700">Category</label>
                 <select 
@@ -350,7 +384,7 @@ export default function Finance() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700">Amount</label>
                   <input 
@@ -383,26 +417,14 @@ export default function Finance() {
                   className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none"
                 />
               </div>
-
-              <button 
-                type="submit"
-                className={cn(
-                  "w-full py-3 text-white font-bold rounded-xl mt-6 transition-all active:scale-95",
-                  txForm.type === 'income' ? "bg-emerald-600 hover:bg-emerald-700" : "bg-blue-600 hover:bg-blue-700"
-                )}
-              >
-                Save Record
-              </button>
             </form>
-          </div>
-        </div>
-      )}
+      </ResponsiveDialog>
 
       {/* Invoice Detail Modal */}
       {selectedTx && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden print:shadow-none animate-in fade-in zoom-in duration-300">
-            <div className="p-10 space-y-10" id="printable-invoice">
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 sm:items-center sm:p-4">
+          <div className="max-h-[calc(100dvh-0.5rem)] w-full max-w-2xl overflow-y-auto rounded-t-lg bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg print:shadow-none">
+            <div className="space-y-6 p-4 sm:space-y-10 sm:p-8 lg:p-10" id="printable-invoice">
               <div className="flex justify-between items-start">
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-black text-2xl">
@@ -419,7 +441,7 @@ export default function Finance() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-10">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 sm:gap-10">
                 <div className="space-y-4">
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-2">Institution Details</p>
                   <div className="text-xs font-bold text-gray-700 space-y-1">

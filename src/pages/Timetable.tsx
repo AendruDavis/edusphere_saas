@@ -18,6 +18,8 @@ import {
 import { cn } from "../lib/utils";
 import { useApp } from "../context/AppContext";
 import { TimetableEntry } from "../types";
+import { ResponsiveDialog } from "../components/ui/ResponsiveDialog";
+import { FormGrid, HorizontalScroller, SegmentedTabs } from "../components/ui/ResponsivePrimitives";
 
 export default function Timetable() {
   const { timetableEntries, schoolSettings, staff, addTimetableEntry, updateTimetableEntry, deleteTimetableEntry } = useApp();
@@ -25,6 +27,7 @@ export default function Timetable() {
   const [selectedClass, setSelectedClass] = useState(schoolSettings.classes[0] || "");
   const [selectedTeacher, setSelectedTeacher] = useState("");
   const [viewType, setViewType] = useState<"weekly" | "daily">("weekly");
+  const [selectedDay, setSelectedDay] = useState("Monday");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<Partial<TimetableEntry> | null>(null);
 
@@ -86,25 +89,27 @@ export default function Timetable() {
     if (activeTab === "exam") return entry.class === selectedClass && entry.type === "exam";
     return false;
   });
+  const selectedDayEntries = filteredEntries.filter((entry) => entry.day === selectedDay);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+    <div className="app-page">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="app-page-header">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight">Academic Timetable</h1>
-          <p className="text-gray-500 font-medium">Coordinate classes, teachers, and rooms efficiently</p>
+          <p className="app-page-kicker">Academics</p>
+          <h1 className="app-page-title">Academic Timetable</h1>
+          <p className="app-page-subtitle">Coordinate classes, teachers, and rooms efficiently.</p>
         </div>
-        <div className="flex gap-2">
-          <button className="p-2.5 bg-white border border-gray-100 rounded-xl text-gray-600 hover:text-indigo-600 transition-all shadow-sm">
+        <div className="grid grid-cols-[44px_44px_1fr] gap-2 sm:flex">
+          <button className="app-button-secondary px-0" aria-label="Print timetable">
             <Printer className="w-5 h-5" />
           </button>
-          <button className="p-2.5 bg-white border border-gray-100 rounded-xl text-gray-600 hover:text-indigo-600 transition-all shadow-sm">
+          <button className="app-button-secondary px-0" aria-label="Download timetable">
             <Download className="w-5 h-5" />
           </button>
           <button 
             onClick={() => handleOpenModal()}
-            className="flex items-center gap-2 bg-gray-900 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-gray-800 transition-all shadow-lg shadow-gray-200 uppercase tracking-widest text-xs"
+            className="app-button-primary"
           >
             <Plus className="w-4 h-4" />
             Add Entry
@@ -113,29 +118,22 @@ export default function Timetable() {
       </div>
 
       {/* Tabs & Controls */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-        <div className="bg-white p-1 rounded-2xl inline-flex border border-gray-100 shadow-sm overflow-x-auto max-w-full">
-          {(["class", "teacher", "exam"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                "px-6 py-2.5 rounded-xl font-black text-xs transition-all uppercase tracking-widest whitespace-nowrap",
-                activeTab === tab 
-                  ? "bg-gray-900 text-white shadow-md" 
-                  : "text-gray-500 hover:text-gray-700"
-              )}
-            >
-              By {tab === "class" ? "Class" : tab === "teacher" ? "Teacher" : "Exam Schedule"}
-            </button>
-          ))}
-        </div>
+      <div className="app-panel flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <SegmentedTabs
+          value={activeTab}
+          onChange={setActiveTab}
+          label="Timetable type"
+          options={[
+            { value: "class", label: "By class" },
+            { value: "teacher", label: "By teacher" },
+            { value: "exam", label: "Exam schedule" },
+          ]}
+        />
 
-        <div className="flex items-center gap-4 bg-white p-2 rounded-2xl border border-gray-100 shadow-sm">
-          <div className="flex items-center gap-2 px-3">
-             <Filter className="w-4 h-4 text-gray-400" />
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1 sm:min-w-56">
              <select 
-               className="bg-transparent border-none font-bold text-gray-900 focus:ring-0 text-sm"
+               className="app-select pl-9"
                value={activeTab === "teacher" ? selectedTeacher : selectedClass}
                onChange={(e) => activeTab === "teacher" ? setSelectedTeacher(e.target.value) : setSelectedClass(e.target.value)}
              >
@@ -145,18 +143,18 @@ export default function Timetable() {
                  : schoolSettings.classes.map(c => <option key={c} value={c}>{c}</option>)
                }
              </select>
+             <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           </div>
-          <div className="h-8 w-px bg-gray-100" />
-          <div className="flex p-1 gap-1">
+          <div className="hidden gap-1 rounded-lg bg-slate-100 p-1 lg:flex">
              <button 
                onClick={() => setViewType("weekly")}
-               className={cn("px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all", viewType === "weekly" ? "bg-gray-100 text-gray-900" : "text-gray-400")}
+               className={cn("app-tab", viewType === "weekly" && "app-tab-active")}
              >
                Weekly
              </button>
              <button 
                onClick={() => setViewType("daily")}
-               className={cn("px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all", viewType === "daily" ? "bg-gray-100 text-gray-900" : "text-gray-400")}
+               className={cn("app-tab", viewType === "daily" && "app-tab-active")}
              >
                Daily
              </button>
@@ -164,13 +162,49 @@ export default function Timetable() {
         </div>
       </div>
 
+      <section className="space-y-4 lg:hidden" aria-label="Daily timetable">
+        <div className="app-panel space-y-3">
+          <label className="text-sm font-semibold text-slate-700" htmlFor="mobile-timetable-day">Day</label>
+          <select id="mobile-timetable-day" className="app-select" value={selectedDay} onChange={(event) => setSelectedDay(event.target.value)}>
+            {days.map((day) => <option key={day} value={day}>{day}</option>)}
+          </select>
+        </div>
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 px-4 py-3">
+            <h2 className="font-semibold text-slate-950">{selectedDay}</h2>
+            <p className="text-sm text-slate-500">{selectedDayEntries.length} scheduled period{selectedDayEntries.length === 1 ? "" : "s"}</p>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {timeSlots.map((slot) => {
+              const entry = selectedDayEntries.find((item) => item.startTime === slot.split(" - ")[0]);
+              return (
+                <div key={slot} className="flex items-start gap-3 p-4">
+                  <div className="w-20 shrink-0 pt-1 text-xs font-semibold text-slate-500">{slot}</div>
+                  {entry ? (
+                    <button type="button" className="min-w-0 flex-1 rounded-lg bg-blue-50 p-3 text-left" onClick={() => { setEditingEntry(entry); setIsModalOpen(true); }}>
+                      <span className="block font-semibold text-slate-950">{entry.subject}</span>
+                      <span className="mt-1 block text-sm text-slate-600">{entry.teacherName || "Teacher not assigned"}{entry.room ? ` / Room ${entry.room}` : ""}</span>
+                    </button>
+                  ) : (
+                    <button type="button" className="app-button-secondary min-w-0 flex-1 border-dashed text-slate-500" onClick={() => handleOpenModal(selectedDay, slot)}>
+                      <Plus className="h-4 w-4" />
+                      Add period
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
       {/* Timetable Grid */}
-      <div className="bg-white rounded-[32px] border border-gray-100 shadow-xl overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="hidden overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm lg:block">
+        <HorizontalScroller label="Weekly timetable" showHint={false}>
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                <th className="p-6 bg-gray-50 border-r border-b border-gray-100 w-32 shrink-0"></th>
+                <th className="sticky left-0 z-20 w-32 shrink-0 border-b border-r border-gray-100 bg-gray-50 p-6"></th>
                 {days.map(day => (
                   <th key={day} className="p-6 bg-gray-50 border-b border-gray-100 text-sm font-black text-gray-900 uppercase tracking-widest min-w-[200px]">
                     {day}
@@ -184,7 +218,7 @@ export default function Timetable() {
                 
                 return (
                   <tr key={slot}>
-                    <td className="p-6 border-r border-b border-gray-50 text-center">
+                    <td className="sticky left-0 z-10 border-b border-r border-gray-50 bg-white p-6 text-center">
                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-tighter leading-tight">{slot.split(" - ")[0]}</p>
                        <div className="w-1 h-4 bg-gray-100 mx-auto my-1 rounded-full" />
                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-tighter leading-tight">{slot.split(" - ")[1]}</p>
@@ -257,26 +291,37 @@ export default function Timetable() {
               })}
             </tbody>
           </table>
-        </div>
+        </HorizontalScroller>
       </div>
 
       {/* Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[40px] w-full max-w-xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="p-8 border-b border-gray-100 flex items-center justify-between">
-               <h2 className="text-2xl font-black text-gray-900">{editingEntry?.id ? "Edit Entry" : "New Entry"}</h2>
-               <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-xl transition-all">
-                  <Plus className="w-6 h-6 rotate-45 text-gray-400" />
-               </button>
-            </div>
-            <form onSubmit={handleSaveEntry} className="p-8 space-y-6">
-               <div className="grid grid-cols-2 gap-6">
+      <ResponsiveDialog
+        open={isModalOpen}
+        title={editingEntry?.id ? "Edit timetable entry" : "New timetable entry"}
+        description="Assign a subject, teacher, room, and time."
+        onClose={() => { setIsModalOpen(false); setEditingEntry(null); }}
+        maxWidth="max-w-xl"
+        footer={(
+          <>
+            {editingEntry?.id && (
+              <button type="button" onClick={() => handleDelete(editingEntry.id!)} className="app-button-secondary text-rose-600 sm:mr-auto">
+                Delete entry
+              </button>
+            )}
+            <button type="button" className="app-button-secondary" onClick={() => { setIsModalOpen(false); setEditingEntry(null); }}>Cancel</button>
+            <button type="submit" form="timetable-entry-form" className="app-button-primary">
+              {editingEntry?.id ? "Update entry" : "Add to timetable"}
+            </button>
+          </>
+        )}
+      >
+            <form id="timetable-entry-form" onSubmit={handleSaveEntry}>
+               <FormGrid>
                   <div className="space-y-2">
-                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Subject</label>
+                     <label className="text-sm font-medium text-slate-700">Subject</label>
                      <select 
                        required
-                       className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl font-bold"
+                       className="app-select"
                        value={editingEntry?.subject || ""}
                        onChange={(e) => setEditingEntry({...editingEntry, subject: e.target.value})}
                      >
@@ -285,10 +330,10 @@ export default function Timetable() {
                      </select>
                   </div>
                   <div className="space-y-2">
-                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Teacher</label>
+                     <label className="text-sm font-medium text-slate-700">Teacher</label>
                      <select 
                        required
-                       className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl font-bold"
+                       className="app-select"
                        value={editingEntry?.teacherId || ""}
                        onChange={(e) => {
                          const t = staff.find(s => s.id === e.target.value);
@@ -300,10 +345,10 @@ export default function Timetable() {
                      </select>
                   </div>
                   <div className="space-y-2">
-                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Day</label>
+                     <label className="text-sm font-medium text-slate-700">Day</label>
                      <select 
                        required
-                       className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl font-bold"
+                       className="app-select"
                        value={editingEntry?.day || ""}
                        onChange={(e) => setEditingEntry({...editingEntry, day: e.target.value})}
                      >
@@ -312,61 +357,41 @@ export default function Timetable() {
                      </select>
                   </div>
                   <div className="space-y-2">
-                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Room</label>
+                     <label className="text-sm font-medium text-slate-700">Room</label>
                      <input 
                        required
                        type="text"
-                       className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl font-bold"
+                       className="app-input"
                        placeholder="e.g. 104"
                        value={editingEntry?.room || ""}
                        onChange={(e) => setEditingEntry({...editingEntry, room: e.target.value})}
                      />
                   </div>
                   <div className="space-y-2">
-                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Start Time</label>
+                     <label className="text-sm font-medium text-slate-700">Start time</label>
                      <input 
                        required
                        type="text"
                        placeholder="08:00"
-                       className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl font-bold"
+                       className="app-input"
                        value={editingEntry?.startTime || ""}
                        onChange={(e) => setEditingEntry({...editingEntry, startTime: e.target.value})}
                      />
                   </div>
                   <div className="space-y-2">
-                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">End Time</label>
+                     <label className="text-sm font-medium text-slate-700">End time</label>
                      <input 
                        required
                        type="text"
                        placeholder="09:00"
-                       className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl font-bold"
+                       className="app-input"
                        value={editingEntry?.endTime || ""}
                        onChange={(e) => setEditingEntry({...editingEntry, endTime: e.target.value})}
                      />
                   </div>
-               </div>
-
-               <div className="flex gap-4 pt-4">
-                  {editingEntry?.id && (
-                    <button 
-                      type="button" 
-                      onClick={() => handleDelete(editingEntry.id!)}
-                      className="px-6 py-4 rounded-2xl bg-rose-50 text-rose-600 font-black text-xs uppercase tracking-widest hover:bg-rose-100 transition-all flex-1"
-                    >
-                      Delete
-                    </button>
-                  )}
-                  <button 
-                    type="submit" 
-                    className="px-6 py-4 rounded-2xl bg-gray-900 text-white font-black text-xs uppercase tracking-widest hover:bg-gray-800 transition-all flex-[2] shadow-xl shadow-gray-100"
-                  >
-                    {editingEntry?.id ? "Update Synchronization" : "Commit to Schedule"}
-                  </button>
-               </div>
+               </FormGrid>
             </form>
-          </div>
-        </div>
-      )}
+      </ResponsiveDialog>
 
       {/* Conflict Scanner & Recommendations */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

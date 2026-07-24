@@ -10,10 +10,10 @@ import {
   Plus,
   ArrowRight,
   BookMarked,
-  X
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useApp } from "../context/AppContext";
+import { ResponsiveDialog } from "../components/ui/ResponsiveDialog";
 
 export default function Academics() {
   const { students, marks, addMark, schoolSettings } = useApp();
@@ -128,7 +128,28 @@ export default function Academics() {
 
         {activeTab === "marks" && (
           <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <table className="w-full text-left text-xs">
+            <div className="divide-y divide-slate-200 md:hidden">
+              {marks.map((mark) => {
+                const student = students.find((entry) => entry.id === mark.studentId);
+                const grade = getGrade(mark.score);
+                return (
+                  <article key={mark.id} className="app-mobile-record">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="truncate font-semibold text-slate-950">{student?.name || "Unknown student"}</h3>
+                        <p className="mt-1 text-sm text-slate-500">{mark.subject} · {mark.term}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="font-bold text-blue-700">{mark.score}%</p>
+                        <p className="text-xs font-semibold text-slate-500">Grade {grade.grade}</p>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+              {marks.length === 0 && <div className="px-4 py-12 text-center text-sm text-slate-500">No marks recorded.</div>}
+            </div>
+            <table className="hidden w-full text-left text-xs md:table">
               <thead className="bg-gray-50 font-black text-gray-400 uppercase tracking-widest">
                 <tr>
                   <th className="px-6 py-4">Student</th>
@@ -230,17 +251,20 @@ export default function Academics() {
       </div>
 
       {/* Marks Modal */}
-      {isMarkModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6 bg-gray-900 text-white flex justify-between items-center">
-              <div>
-                <h3 className="text-xl font-bold">Academic Mark Entry</h3>
-                <p className="text-gray-400 text-xs">Record student performance results</p>
-              </div>
-              <button onClick={() => setIsMarkModalOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X className="w-6 h-6" /></button>
-            </div>
-            <form className="p-6 space-y-4" onSubmit={handleMarkSubmit}>
+      <ResponsiveDialog
+        open={isMarkModalOpen}
+        title="Academic Mark Entry"
+        description="Record a student's verified subject result."
+        onClose={() => setIsMarkModalOpen(false)}
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <button type="button" onClick={() => setIsMarkModalOpen(false)} className="app-button-secondary">Cancel</button>
+            <button type="submit" form="academic-mark-form" className="app-button-primary">Verify & Record Mark</button>
+          </>
+        }
+      >
+            <form id="academic-mark-form" className="space-y-4" onSubmit={handleMarkSubmit}>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-gray-700">Student</label>
                 <select 
@@ -253,7 +277,7 @@ export default function Academics() {
                   {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.class})</option>)}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700">Subject</label>
                   <input type="text" value={markForm.subject} onChange={(e) => setMarkForm({...markForm, subject: e.target.value})} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none text-sm" required />
@@ -263,7 +287,7 @@ export default function Academics() {
                   <input type="number" value={markForm.score} onChange={(e) => setMarkForm({...markForm, score: parseInt(e.target.value) || 0})} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none text-sm font-bold" required />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700">Term</label>
                   <select value={markForm.term} onChange={(e) => setMarkForm({...markForm, term: e.target.value})} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none text-sm">
@@ -281,11 +305,8 @@ export default function Academics() {
                 <label className="text-sm font-medium text-gray-700">Teacher Comment (Optional)</label>
                 <textarea value={markForm.comment} onChange={(e) => setMarkForm({...markForm, comment: e.target.value})} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none text-sm" rows={2} />
               </div>
-              <button type="submit" className="w-full py-3 bg-blue-600 text-white font-black rounded-xl mt-6 hover:bg-blue-700 transition-all active:scale-95">Verify & Record Mark</button>
             </form>
-          </div>
-        </div>
-      )}
+      </ResponsiveDialog>
     </div>
   );
 }

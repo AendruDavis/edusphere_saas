@@ -24,6 +24,7 @@ import {
 import { cn, formatCurrency } from "../lib/utils";
 import { useApp } from "../context/AppContext";
 import { apiRequest } from "../lib/api";
+import { SegmentedTabs } from "../components/ui/ResponsivePrimitives";
 
 type StudentStatusSummary = {
   daysAttended: number;
@@ -154,28 +155,23 @@ export default function StudentDetail() {
       </section>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-100 overflow-x-auto scroller-hide">
-        {(["overview", "fees", "library", "health"] as const).map((tab) => (
-          <button 
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={cn(
-              "px-8 py-4 text-sm font-bold uppercase tracking-widest transition-all border-b-2 whitespace-nowrap",
-              activeTab === tab 
-                ? "border-blue-600 text-blue-600" 
-                : "border-transparent text-gray-400 hover:bg-gray-50 hover:text-gray-600"
-            )}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        value={activeTab}
+        onChange={setActiveTab}
+        label="Student record section"
+        options={[
+          { value: "overview", label: "Overview" },
+          { value: "fees", label: "Fees" },
+          { value: "library", label: "Library" },
+          { value: "health", label: "Health" },
+        ]}
+      />
 
       {activeTab === "overview" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Info */}
           <div className="lg:col-span-2 space-y-8">
-            <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm space-y-8">
+            <div className="space-y-6 rounded-lg border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
               <h3 className="text-xl font-bold flex items-center gap-3">
                 <User className="w-6 h-6 text-blue-600" />
                 Personal Information
@@ -231,10 +227,10 @@ export default function StudentDetail() {
 
           {/* Quick Stats */}
           <div className="space-y-6">
-            <div className="bg-blue-600 text-white p-8 rounded-3xl shadow-xl shadow-blue-100 space-y-6">
+            <div className="space-y-6 rounded-lg bg-blue-600 p-4 text-white shadow-lg sm:p-6">
               <h4 className="text-xs font-bold uppercase tracking-widest text-blue-200">Fees Balance</h4>
               <div className="flex items-end gap-2">
-                <span className="text-5xl font-black">{formatCurrency(student.fees.balance, schoolSettings.currency || "UGX")}</span>
+                <span className="break-all text-3xl font-black sm:text-4xl">{formatCurrency(student.fees.balance, schoolSettings.currency || "UGX")}</span>
                 <span className="text-lg font-bold opacity-60 mb-1">Due</span>
               </div>
               <div className="h-2 w-full bg-blue-800 rounded-full overflow-hidden">
@@ -248,7 +244,7 @@ export default function StudentDetail() {
               </p>
             </div>
 
-            <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-6">
+            <div className="space-y-6 rounded-lg border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
               <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Library Brief</h4>
               <div className="flex items-center gap-4">
                 <div className="p-3 bg-amber-50 rounded-2xl">
@@ -276,18 +272,35 @@ export default function StudentDetail() {
       )}
 
       {activeTab === "fees" && (
-        <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm space-y-8">
-           <div className="flex justify-between items-center">
+        <div className="space-y-6 rounded-lg border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
+           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
              <h3 className="text-xl font-bold flex items-center gap-3">
                <Receipt className="w-6 h-6 text-emerald-600" />
                Fee Payment History
              </h3>
-             <button className="px-5 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all">
+             <button className="app-button-primary bg-emerald-600 hover:bg-emerald-700">
                Record New Payment
              </button>
            </div>
 
-           <div className="overflow-x-auto">
+           <div className="divide-y divide-slate-200 rounded-lg border border-slate-200 md:hidden">
+             {student.fees.history.map((transaction) => (
+               <article key={transaction.id} className="app-mobile-record">
+                 <div className="flex items-start justify-between gap-3">
+                   <div>
+                     <h3 className="font-semibold text-slate-950">#{transaction.id}</h3>
+                     <p className="mt-1 text-sm text-slate-500">{transaction.date} · {transaction.method}</p>
+                   </div>
+                   <p className="text-sm font-bold text-slate-950">{formatCurrency(transaction.amount, schoolSettings.currency || "UGX")}</p>
+                 </div>
+                 <span className="mt-3 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold capitalize text-emerald-700">
+                   {transaction.status}
+                 </span>
+               </article>
+             ))}
+             {student.fees.history.length === 0 && <div className="px-4 py-12 text-center text-sm text-slate-500">No payment history.</div>}
+           </div>
+           <div className="hidden overflow-x-auto md:block">
              <table className="w-full text-left">
                <thead>
                  <tr className="border-b border-gray-100">
@@ -319,7 +332,7 @@ export default function StudentDetail() {
       )}
 
       {activeTab === "library" && (
-        <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm space-y-8">
+        <div className="space-y-6 rounded-lg border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
           <h3 className="text-xl font-bold flex items-center gap-3">
             <BookIcon className="w-6 h-6 text-amber-600" />
             Library Borrowing Records
@@ -362,7 +375,7 @@ export default function StudentDetail() {
       )}
 
       {activeTab === "health" && (
-        <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm space-y-8">
+        <div className="space-y-6 rounded-lg border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
           <h3 className="text-xl font-bold flex items-center gap-3">
             <HeartPulse className="w-6 h-6 text-rose-600" />
             Clinical & Sick Bay Records

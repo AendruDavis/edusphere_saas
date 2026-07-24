@@ -38,7 +38,7 @@ export function ExportMenu({
   };
 
   return (
-    <button type="button" onClick={exportCsv} className="app-button-secondary">
+    <button type="button" onClick={exportCsv} className="app-button-secondary w-full sm:w-auto">
       <Download className="h-4 w-4" />
       Export CSV
     </button>

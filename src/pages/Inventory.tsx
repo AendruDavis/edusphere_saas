@@ -13,6 +13,7 @@ import {
 import { cn, formatCurrency } from "../lib/utils";
 import { useApp } from "../context/AppContext";
 import { Product } from "../types";
+import { ResponsiveDialog } from "../components/ui/ResponsiveDialog";
 
 export default function Inventory() {
   const { products, addProduct, updateProduct, deleteProduct, schoolSettings } = useApp();
@@ -70,7 +71,7 @@ export default function Inventory() {
               setFormData({ name: "", category: "Stationery", price: 0, quantity: 0, unit: "pcs" });
               setIsModalOpen(true);
             }}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all active:scale-95"
+            className="app-button-primary"
           >
             <Plus className="w-4 h-4" />
             New Product
@@ -85,7 +86,7 @@ export default function Inventory() {
           { label: "Empty Shelf", count: outOfStockItems, icon: Tag, color: "rose" },
           { label: "Store Value", count: products.reduce((s, p) => s + (p.price*p.quantity), 0), icon: ShoppingCart, color: "emerald", isCurrency: true },
         ].map((item) => (
-          <div key={item.label} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+          <div key={item.label} className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex items-center gap-4">
               <div className={cn(
                 "p-3 rounded-2xl",
@@ -120,8 +121,39 @@ export default function Inventory() {
             </div>
           </div>
 
-          <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
+          <div className="overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm">
+            <div className="divide-y divide-slate-200 md:hidden">
+              {products.map((product) => (
+                <article key={product.id} className="app-mobile-record">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate font-semibold text-slate-950">{product.name}</h3>
+                      <p className="mt-1 text-sm text-slate-500">{product.category}</p>
+                    </div>
+                    <p className="shrink-0 text-sm font-bold text-slate-900">
+                      {formatCurrency(product.price, schoolSettings.currency || "UGX")}
+                    </p>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <span className={cn(
+                      "inline-flex items-center gap-1.5 text-sm font-medium",
+                      product.quantity <= lowStockThreshold ? "text-amber-700" : "text-slate-600",
+                    )}>
+                      {product.quantity <= lowStockThreshold && <AlertTriangle className="h-4 w-4" aria-hidden="true" />}
+                      {product.quantity} {product.unit} in stock
+                    </span>
+                    <button type="button" onClick={() => handleEdit(product)} className="app-button-secondary">Modify</button>
+                  </div>
+                </article>
+              ))}
+              {products.length === 0 && (
+                <div className="px-4 py-12 text-center">
+                  <p className="font-semibold text-slate-900">No inventory items</p>
+                  <p className="mt-1 text-sm text-slate-500">Add a product to begin tracking stock.</p>
+                </div>
+              )}
+            </div>
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100 font-black text-gray-400 uppercase tracking-widest">
@@ -173,8 +205,8 @@ export default function Inventory() {
         </div>
 
         <div className="space-y-6">
-          <div className="bg-gray-900 text-white p-8 rounded-3xl shadow-2xl relative overflow-hidden">
-            <div className="relative z-10">
+          <div className="overflow-hidden rounded-lg bg-gray-900 p-5 text-white shadow-lg sm:p-6">
+            <div>
               <h3 className="text-lg font-black mb-4 flex items-center gap-2">
                 <ShoppingCart className="w-5 h-5 text-blue-400" />
                 Store Metrics
@@ -196,11 +228,9 @@ export default function Inventory() {
                 </div>
               </div>
             </div>
-            {/* Glossy background detail */}
-            <div className="absolute -top-10 -right-10 w-40 h-40 bg-blue-500/20 rounded-full blur-3xl" />
           </div>
 
-          <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm relative group overflow-hidden">
+          <div className="overflow-hidden rounded-lg border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
             <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-6">Stock Health</h4>
             <div className="space-y-4">
               {products.filter(p => p.quantity <= lowStockThreshold).slice(0, 3).map(p => (
@@ -218,18 +248,35 @@ export default function Inventory() {
       </div>
 
       {/* Product Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
-            <div className="p-8 bg-gray-900 text-white flex justify-between items-center">
-              <div>
-                <h3 className="text-2xl font-black uppercase tracking-tighter">{editingProduct ? "Manage" : "New"} Product</h3>
-                <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Store Inventory Entry</p>
-              </div>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/10 rounded-full"><Plus className="w-8 h-8 rotate-45" /></button>
-            </div>
-            
-            <form onSubmit={handleSubmit} className="p-8 space-y-5">
+      <ResponsiveDialog
+        open={isModalOpen}
+        title={`${editingProduct ? "Manage" : "New"} Product`}
+        description="Create or update an item in the school inventory."
+        onClose={() => setIsModalOpen(false)}
+        maxWidth="max-w-md"
+        footer={
+          <>
+            {editingProduct && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (confirm("Delete this product?")) {
+                    await deleteProduct(editingProduct.id);
+                    setIsModalOpen(false);
+                  }
+                }}
+                className="app-button-secondary text-rose-700 hover:bg-rose-50"
+              >
+                Delete
+              </button>
+            )}
+            <button type="submit" form="inventory-form" className="app-button-primary">
+              {editingProduct ? "Update Stock" : "Save Product"}
+            </button>
+          </>
+        }
+      >
+            <form id="inventory-form" onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Product Title</label>
                 <input 
@@ -240,7 +287,7 @@ export default function Inventory() {
                   required 
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Category</label>
                   <select 
@@ -256,7 +303,7 @@ export default function Inventory() {
                   <input type="text" value={formData.unit} onChange={(e) => setFormData({...formData, unit: e.target.value})} className="w-full px-5 py-3 bg-gray-50 border border-gray-100 rounded-2xl outline-none text-sm font-bold" placeholder="pcs, kgs..." />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Unit Price</label>
                   <input type="number" value={formData.price} onChange={(e) => setFormData({...formData, price: parseFloat(e.target.value) || 0})} className="w-full px-5 py-3 bg-gray-50 border border-gray-100 rounded-2xl outline-none font-black text-blue-600" required />
@@ -266,30 +313,8 @@ export default function Inventory() {
                   <input type="number" value={formData.quantity} onChange={(e) => setFormData({...formData, quantity: parseInt(e.target.value) || 0})} className="w-full px-5 py-3 bg-gray-50 border border-gray-100 rounded-2xl outline-none font-black text-gray-900" required />
                 </div>
               </div>
-
-              <div className="flex gap-4 pt-6">
-                {editingProduct && (
-                  <button 
-                    type="button"
-                    onClick={async () => {
-                      if(confirm("Delete this product?")) {
-                        await deleteProduct(editingProduct.id);
-                        setIsModalOpen(false);
-                      }
-                    }}
-                    className="flex-1 py-4 bg-rose-50 text-rose-600 font-black rounded-2xl uppercase text-[10px] tracking-widest hover:bg-rose-100 transition-all font-mono"
-                  >
-                    Delete
-                  </button>
-                )}
-                <button type="submit" className="flex-[2] py-4 bg-blue-600 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 active:scale-95">
-                  {editingProduct ? "Update Stock" : "Save Product"}
-                </button>
-              </div>
             </form>
-          </div>
-        </div>
-      )}
+      </ResponsiveDialog>
     </div>
   );
 }
