@@ -1,9 +1,12 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { z } from "zod";
+import type { AppModule, PermissionAction, PlatformRole, SchoolRole } from "../../shared/permissions";
+import { rolesCan } from "../../shared/permissions";
 import { AppError } from "../domain/errors";
-import type { AuthUser, UserRole } from "../domain/roles";
+import type { AuthUser } from "../domain/roles";
 import { canAccessRole } from "../domain/roles";
 import { AuthService } from "../infrastructure/authService";
+import { query } from "../infrastructure/database";
 import type { TenantContext } from "../domain/tenancy";
 
 declare global {
@@ -21,6 +24,17 @@ export function requireTenant(authService = new AuthService()): RequestHandler {
     const schoolId = req.header("x-school-id");
     if (!schoolId) throw new AppError(400, "Missing X-School-Id header");
     req.tenant = await authService.resolveTenant(req.currentUser.id, schoolId);
+
+    if (req.tenant.supportAccess) {
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+        throw new AppError(403, "Support sessions are read-only");
+      }
+      await query(
+        `insert into audit_logs ("schoolId", "actorId", action, entity, "riskLevel", summary, metadata)
+         values ($1, $2, 'support.request_read', 'http_request', 'restricted', $3, $4::jsonb)`,
+        [schoolId, req.currentUser.id, `${req.method} ${req.path}`, JSON.stringify({ method: req.method, path: req.path })],
+      );
+    }
     next();
   });
 }
@@ -48,13 +62,33 @@ export function requireAuth(authService = new AuthService()): RequestHandler {
   });
 }
 
-export function requireRole(...roles: UserRole[]): RequestHandler {
+export function requireRole(...roles: SchoolRole[]): RequestHandler {
   return (req, _res, next) => {
-    const scopedUser = req.currentUser && req.tenant
-      ? { ...req.currentUser, role: req.tenant.role }
-      : req.currentUser ?? null;
-    if (!canAccessRole(scopedUser, roles)) {
+    const allowed = req.tenant
+      ? req.tenant.roles.some((role) => roles.includes(role))
+      : canAccessRole(req.currentUser ?? null, roles);
+    if (!allowed) {
       next(new AppError(403, "You do not have permission to perform this action"));
+      return;
+    }
+    next();
+  };
+}
+
+export function requirePermission(module: AppModule, action: PermissionAction = "read"): RequestHandler {
+  return (req, _res, next) => {
+    if (!req.tenant || !rolesCan(req.tenant.roles, module, action)) {
+      next(new AppError(403, "You do not have permission to perform this action"));
+      return;
+    }
+    next();
+  };
+}
+
+export function requirePlatformRole(role: PlatformRole): RequestHandler {
+  return (req, _res, next) => {
+    if (req.currentUser?.platformRole !== role) {
+      next(new AppError(403, "Platform administrator access is required"));
       return;
     }
     next();

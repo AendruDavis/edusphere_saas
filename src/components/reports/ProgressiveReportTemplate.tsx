@@ -16,23 +16,41 @@ export function ProgressiveReportTemplate({
   report,
   currency,
   editable = false,
+  canEditHeadComment = false,
   onCommentChange,
 }: {
   report: ProgressiveReportData;
   currency: string;
   editable?: boolean;
+  canEditHeadComment?: boolean;
   onCommentChange?: (field: "classTeacherComment" | "headTeacherComment", value: string) => void;
 }) {
+  const settings = report.reportSettings;
   const style: ReportStyle = {
     "--report-primary": report.school.primaryColor,
     "--report-secondary": report.school.secondaryColor,
   };
+  const logoUrl = report.school.logoVariants.wide || report.school.logoVariants.square || report.school.logoUrl;
+  const showStatusLine = settings.showAttendance || settings.showFees || settings.showHealth || settings.showLibrary;
+  const detailRows: Array<[string, string]> = [
+    ["LIN:", report.student.lin],
+    ["PAY-CODE:", report.student.payCode],
+    ["SECTION:", report.student.section],
+    ["GENDER:", report.student.gender],
+    ["ROLL:", report.student.roll],
+    ["YEAR:", report.student.year],
+    ["TERM:", report.student.term],
+    ["CLASS:", report.student.class],
+  ];
+  if (settings.showPosition && report.summary.position > 0) {
+    detailRows.push(["POSITION:", `${report.summary.position} / ${report.summary.classSize}`]);
+  }
 
   return (
-    <article id="progressive-report-print" className="progressive-report-sheet" style={style}>
+    <article id="progressive-report-print" className={`progressive-report-sheet progressive-report-${settings.preset}`} style={style}>
       <header className="progressive-report-header">
         <div className="progressive-report-logo">
-          {report.school.logoUrl ? <img src={report.school.logoUrl} alt={`${report.school.name} logo`} /> : "LOGO"}
+          {settings.showLogo && logoUrl ? <img src={logoUrl} alt={`${report.school.name} logo`} /> : null}
         </div>
         <div>
           <h1 className="progressive-school-name">{report.school.name}</h1>
@@ -42,34 +60,27 @@ export function ProgressiveReportTemplate({
           {report.school.motto && <p className="progressive-school-contact secondary">{report.school.motto}</p>}
         </div>
         <div className="progressive-report-photo">
-          {report.student.photoUrl ? <img src={report.student.photoUrl} alt={report.student.name} /> : "PHOTO"}
+          {settings.showStudentPhoto && report.student.photoUrl ? <img src={report.student.photoUrl} alt={report.student.name} /> : null}
         </div>
       </header>
 
-      <h2 className="progressive-report-title">END OF TERM PROGRESSIVE REPORT</h2>
+      <h2 className="progressive-report-title">{settings.title}</h2>
 
       <section className="progressive-student-details">
-        {[
-          ["LIN:", report.student.lin],
-          ["PAY-CODE:", report.student.payCode],
-          ["SECTION:", report.student.section],
-          ["GENDER:", report.student.gender],
-          ["ROLL:", report.student.roll],
-          ["YEAR:", report.student.year],
-          ["TERM:", report.student.term],
-          ["CLASS:", report.student.class],
-        ].map(([label, value]) => (
+        {detailRows.map(([label, value]) => (
           <div className="progressive-detail" key={label}><span>{label}</span><strong>{value || "-"}</strong></div>
         ))}
         <div className="progressive-detail progressive-student-name"><span>NAME:</span><strong>{report.student.name}</strong></div>
       </section>
 
-      <section className="progressive-status-line">
-        <div><span>Attendance</span><strong>{report.statusSummary.daysAttended}/{report.statusSummary.expectedSchoolDays || "-"}</strong></div>
-        <div><span>Fees Balance</span><strong>{formatCurrency(report.statusSummary.feesBalance, currency)}</strong></div>
-        <div><span>Sickness</span><strong>{report.statusSummary.sicknessStatus}</strong></div>
-        <div title={report.statusSummary.borrowedBookTitles.join(", ")}><span>Books Borrowed</span><strong>{report.statusSummary.booksBorrowed}</strong></div>
-      </section>
+      {showStatusLine && (
+        <section className="progressive-status-line">
+          {settings.showAttendance && <div><span>Attendance</span><strong>{report.statusSummary.daysAttended}/{report.statusSummary.expectedSchoolDays || "-"}</strong></div>}
+          {settings.showFees && <div><span>Fees balance</span><strong>{formatCurrency(report.statusSummary.feesBalance, currency)}</strong></div>}
+          {settings.showHealth && <div><span>Health</span><strong>{report.statusSummary.sicknessStatus}</strong></div>}
+          {settings.showLibrary && <div title={report.statusSummary.borrowedBookTitles.join(", ")}><span>Books borrowed</span><strong>{report.statusSummary.booksBorrowed}</strong></div>}
+        </section>
+      )}
 
       <table className="progressive-marks-table">
         <thead>
@@ -95,6 +106,7 @@ export function ProgressiveReportTemplate({
               <td>{subject.teacherInitials}</td>
             </tr>
           ))}
+          {!report.subjects.length && <tr><td colSpan={13} className="progressive-no-marks">No marks available for this period.</td></tr>}
           <tr className="progressive-averages">
             <td>AVERAGES</td>
             <td colSpan={8}></td>
@@ -116,31 +128,19 @@ export function ProgressiveReportTemplate({
 
       <section className="progressive-comments">
         <label>
-          Class Teacher's Comment:
-          <textarea
-            readOnly={!editable}
-            value={report.comments.classTeacherComment}
-            onChange={(event) => onCommentChange?.("classTeacherComment", event.target.value)}
-          />
+          {settings.classTeacherLabel} comment:
+          <textarea readOnly={!editable} value={report.comments.classTeacherComment} onChange={(event) => onCommentChange?.("classTeacherComment", event.target.value)} />
         </label>
         <label>
-          Head teacher's Comment:
-          <textarea
-            readOnly={!editable}
-            value={report.comments.headTeacherComment}
-            onChange={(event) => onCommentChange?.("headTeacherComment", event.target.value)}
-          />
+          {settings.headTeacherLabel} comment:
+          <textarea readOnly={!canEditHeadComment} value={report.comments.headTeacherComment} onChange={(event) => onCommentChange?.("headTeacherComment", event.target.value)} />
         </label>
       </section>
 
       <table className="progressive-descriptor-table">
         <tbody>
           {report.gradeBands.map((band) => (
-            <tr key={`${band.grade}-${band.min}`}>
-              <td>{band.grade}</td>
-              <td>{band.comment}</td>
-              <td>{band.description || `Performance at ${band.min}% and above.`}</td>
-            </tr>
+            <tr key={`${band.grade}-${band.min}`}><td>{band.grade}</td><td>{band.comment}</td><td>{band.description || `Performance at ${band.min}% and above.`}</td></tr>
           ))}
         </tbody>
       </table>
@@ -148,21 +148,17 @@ export function ProgressiveReportTemplate({
       <table className="progressive-grade-table">
         <tbody>
           <tr>{report.gradeBands.map((band) => <td key={band.grade}>{band.grade}</td>)}</tr>
-          <tr>
-            {report.gradeBands.map((band, index) => {
-              const upper = index === 0 ? 100 : report.gradeBands[index - 1].min - 1;
-              return <td key={band.grade}>{band.min} - {upper}</td>;
-            })}
-          </tr>
+          <tr>{report.gradeBands.map((band, index) => { const upper = index === 0 ? 100 : report.gradeBands[index - 1].min - 1; return <td key={band.grade}>{band.min} - {upper}</td>; })}</tr>
         </tbody>
       </table>
 
       <footer className="progressive-report-footer">
         <span>THIS TERM ENDS: {report.summary.termClosesOn || "-"}</span>
         <span>{report.school.stampWarning}</span>
-        <span>Fees Balance: {formatCurrency(report.statusSummary.feesBalance, currency)}</span>
+        {settings.showFees && <span>Fees Balance: {formatCurrency(report.statusSummary.feesBalance, currency)}</span>}
         <span>NEXT TERM STARTS: {report.summary.termOpensOn || "-"}</span>
         <span>{report.school.reportFooter}</span>
+        <span>Revision {report.revision || 0}</span>
       </footer>
     </article>
   );

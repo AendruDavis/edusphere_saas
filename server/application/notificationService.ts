@@ -2,9 +2,11 @@ import type { NotificationChannel } from "../domain/providers";
 import type { TenantContext } from "../domain/tenancy";
 import { query } from "../infrastructure/database";
 
+type SchoolContext = Pick<TenantContext, "schoolId">;
+
 export class NotificationService {
   async queue(
-    tenant: Pick<TenantContext, "schoolId">,
+    tenant: SchoolContext,
     input: {
       type: string;
       channel: NotificationChannel;
@@ -36,7 +38,7 @@ export class NotificationService {
     return result.rows[0] ?? null;
   }
 
-  async queueSickbayAlert(tenant: TenantContext, studentId: string, diagnosis: string, occurredAt: string) {
+  async queueSickbayAlert(tenant: SchoolContext, studentId: string, diagnosis: string, occurredAt: string) {
     const contact = await query<{ parentPhone: string | null; parentEmail: string | null; parentWhatsApp: string | null; name: string }>(
       `select "parentPhone", "parentEmail", "parentWhatsApp", name
        from students where id = $1 and "schoolId" = $2`,
@@ -52,7 +54,7 @@ export class NotificationService {
     ]);
   }
 
-  async queueAttendanceAlert(tenant: TenantContext, studentId: string, occurredAt: string) {
+  async queueAttendanceAlert(tenant: SchoolContext, studentId: string, occurredAt: string) {
     const contact = await query<{ parentPhone: string | null; parentEmail: string | null; parentWhatsApp: string | null; name: string }>(
       `select "parentPhone", "parentEmail", "parentWhatsApp", name
        from students where id = $1 and "schoolId" = $2`,

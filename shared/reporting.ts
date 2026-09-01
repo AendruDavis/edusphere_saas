@@ -1,3 +1,5 @@
+import type { LogoVariants, ReportSettings } from "./reportSettings";
+
 export type ReportGradeBand = {
   min: number;
   grade: string;
@@ -26,10 +28,15 @@ export type ProgressiveReportSubject = {
 export type ProgressiveReportData = {
   reportId: string | null;
   status: "draft" | "finalized";
+  revision: number;
+  templateVersion: number;
+  reportSettings: ReportSettings;
   school: {
     id: string;
     name: string;
     logoUrl: string | null;
+    logoVariants: LogoVariants;
+    brandingVersion: number;
     motto: string;
     address: string;
     box: string;
@@ -66,6 +73,8 @@ export type ProgressiveReportData = {
   subjects: ProgressiveReportSubject[];
   summary: {
     average: number;
+    position: number;
+    classSize: number;
     projectWork: string;
     overallIdentifier: string;
     overallGrade: string;

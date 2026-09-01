@@ -1,576 +1,563 @@
-import React, { useState } from "react";
-import { 
-  Settings as SettingsIcon, 
-  School, 
-  Shield, 
-  Users, 
-  Save, 
-  Upload,
-  UserCheck,
-  MoreVertical,
+import React from "react";
+import {
+  AlertTriangle,
   Check,
-  X,
-  GraduationCap
+  FileText,
+  GraduationCap,
+  Image as ImageIcon,
+  Link2,
+  LockKeyhole,
+  Plus,
+  Save,
+  School,
+  ShieldCheck,
+  Trash2,
+  Upload,
+  Users,
 } from "lucide-react";
-import { cn, formatCurrency } from "../lib/utils";
+import { SCHOOL_ROLES, isSchoolRole, type SchoolRole } from "../../shared/permissions";
+import {
+  DEFAULT_REPORT_SETTINGS,
+  REPORT_TEMPLATE_PRESETS,
+  normalizeReportSettings,
+  type LogoVariants,
+  type ReportSettings,
+} from "../../shared/reportSettings";
 import { useApp } from "../context/AppContext";
-import { uploadDataUrlAsset } from "../lib/api";
 import { useToast } from "../context/ToastContext";
+import { apiRequest } from "../lib/api";
+import { cn, formatCurrency } from "../lib/utils";
+import type { SchoolSettings, User } from "../types";
 
-type SettingsSection = "profile" | "fees" | "grading" | "access" | "danger";
+type SettingsSection = "profile" | "reports" | "fees" | "grading" | "access";
+type EditableSettings = SchoolSettings & {
+  address: string;
+  phone: string;
+  email: string;
+  academicYear: string;
+  currency: string;
+  classFees: Record<string, number>;
+  gradingScale: NonNullable<SchoolSettings["gradingScale"]>;
+  motto: string;
+  deoCode: string;
+  tin: string;
+  primaryColor: string;
+  secondaryColor: string;
+  bankName: string;
+  bankAccount: string;
+  payCode: string;
+  reportFooter: string;
+  stampWarning: string;
+  assessmentModel: NonNullable<SchoolSettings["assessmentModel"]>;
+  reportSettings: ReportSettings;
+};
+
+type ReferenceItem = { id: string; name: string; detail?: string | null };
+type StreamReference = ReferenceItem & { classId: string };
+type TeacherAssignment = {
+  id?: string;
+  userId: string;
+  academicYearId: string;
+  classId: string;
+  streamId: string | null;
+  subjectId: string | null;
+  isClassTeacher: boolean;
+};
+type AccessReferences = {
+  authorizationMode: "audit" | "enforce";
+  parents: ReferenceItem[];
+  students: ReferenceItem[];
+  staff: ReferenceItem[];
+  academicYears: ReferenceItem[];
+  classes: ReferenceItem[];
+  streams: StreamReference[];
+  subjects: ReferenceItem[];
+  assignments: TeacherAssignment[];
+};
+type AccessReadiness = {
+  unlinkedParents: number;
+  unlinkedStudents: number;
+  unassignedTeachers: number;
+  totalUnresolved: number;
+};
+
+const sectionOptions: Array<{ id: SettingsSection; label: string; icon: React.ElementType }> = [
+  { id: "profile", label: "School profile", icon: School },
+  { id: "reports", label: "Reports and identity", icon: FileText },
+  { id: "fees", label: "Class fees", icon: ImageIcon },
+  { id: "grading", label: "Grading scale", icon: GraduationCap },
+  { id: "access", label: "Access control", icon: ShieldCheck },
+];
+
+const roleLabels: Record<SchoolRole, string> = {
+  admin: "Administrator",
+  teacher: "Teacher",
+  student: "Student",
+  parent: "Parent",
+  accountant: "Accountant",
+  staff: "Staff",
+  driver: "Driver",
+  librarian: "Librarian",
+  nurse: "Nurse",
+};
+
+function editableSettings(source: SchoolSettings): EditableSettings {
+  return {
+    ...source,
+    name: source.name || "",
+    logo: source.logo || null,
+    level: source.level || "Primary",
+    classes: source.classes || [],
+    address: source.address || "",
+    phone: source.phone || "",
+    email: source.email || "",
+    academicYear: source.academicYear || "2026/2027",
+    currency: source.currency || "UGX",
+    classFees: source.classFees || {},
+    gradingScale: source.gradingScale || [],
+    motto: source.motto || "",
+    deoCode: source.deoCode || "",
+    tin: source.tin || "",
+    primaryColor: source.primaryColor || "#2563eb",
+    secondaryColor: source.secondaryColor || "#15803d",
+    bankName: source.bankName || "",
+    bankAccount: source.bankAccount || "",
+    payCode: source.payCode || "",
+    reportFooter: source.reportFooter || "",
+    stampWarning: source.stampWarning || "Not valid without the school official stamp",
+    assessmentModel: source.assessmentModel || "percentage_100",
+    reportSettings: normalizeReportSettings(source.reportSettings),
+  };
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error || new Error("Unable to read the selected image"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function ToggleRow({ checked, label, onChange }: { checked: boolean; label: string; onChange: (checked: boolean) => void }) {
+  return (
+    <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4 border-b border-slate-100 py-2 last:border-0">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-5 w-5 accent-blue-600" />
+    </label>
+  );
+}
+
+function TeacherScopeEditor({
+  user,
+  references,
+  onChanged,
+}: {
+  user: User;
+  references: AccessReferences;
+  onChanged: () => Promise<void>;
+}) {
+  const toast = useToast();
+  const assignments = references.assignments.filter((assignment) => assignment.userId === user.id);
+  const defaultYear = references.academicYears.find((item) => item.detail === "Active")?.id || references.academicYears[0]?.id || "";
+  const [draft, setDraft] = React.useState({ academicYearId: defaultYear, classId: references.classes[0]?.id || "", streamId: "", subjectId: "", isClassTeacher: false });
+  const [saving, setSaving] = React.useState(false);
+  const streams = references.streams.filter((stream) => stream.classId === draft.classId);
+  const labelFor = (items: ReferenceItem[], id: string | null) => id ? items.find((item) => item.id === id)?.name || "Unknown" : "All";
+
+  const persist = async (next: TeacherAssignment[]) => {
+    setSaving(true);
+    try {
+      await apiRequest(`/api/access/teachers/${user.id}/assignments`, {
+        method: "PUT",
+        json: {
+          assignments: next.map(({ academicYearId, classId, streamId, subjectId, isClassTeacher }) => ({
+            academicYearId,
+            classId,
+            streamId: streamId || null,
+            subjectId: subjectId || null,
+            isClassTeacher,
+          })),
+        },
+      });
+      await onChanged();
+      toast.success("Teacher scope updated.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to update teacher scope");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addAssignment = async () => {
+    if (!draft.academicYearId || !draft.classId || (!draft.subjectId && !draft.isClassTeacher)) {
+      toast.error("Select a year, class, and either a subject or class-teacher scope.");
+      return;
+    }
+    const candidate: TeacherAssignment = {
+      userId: user.id,
+      academicYearId: draft.academicYearId,
+      classId: draft.classId,
+      streamId: draft.streamId || null,
+      subjectId: draft.subjectId || null,
+      isClassTeacher: draft.isClassTeacher,
+    };
+    const duplicate = assignments.some((item) => item.academicYearId === candidate.academicYearId && item.classId === candidate.classId && item.streamId === candidate.streamId && item.subjectId === candidate.subjectId && item.isClassTeacher === candidate.isClassTeacher);
+    if (duplicate) return;
+    await persist([...assignments, candidate]);
+  };
+
+  if (!references.academicYears.length || !references.classes.length) {
+    return <p className="text-xs text-amber-700">Academic years and normalized classes are required before teacher scopes can be assigned.</p>;
+  }
+
+  return (
+    <div className="space-y-3 border-t border-slate-200 pt-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Teaching scope</p>
+      {assignments.map((assignment) => (
+        <div key={assignment.id || `${assignment.academicYearId}-${assignment.classId}-${assignment.subjectId}`} className="flex items-start justify-between gap-3 rounded-lg bg-white p-3 text-xs">
+          <div className="min-w-0">
+            <p className="font-semibold text-slate-800">{labelFor(references.classes, assignment.classId)} / {labelFor(references.subjects, assignment.subjectId)}</p>
+            <p className="mt-1 text-slate-500">{labelFor(references.academicYears, assignment.academicYearId)}{assignment.isClassTeacher ? " / Class teacher" : ""}</p>
+          </div>
+          <button type="button" disabled={saving} onClick={() => void persist(assignments.filter((item) => item !== assignment))} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600" aria-label="Remove teaching scope">
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      ))}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <select className="app-select min-h-11" aria-label="Academic year" value={draft.academicYearId} onChange={(event) => setDraft((value) => ({ ...value, academicYearId: event.target.value }))}>
+          {references.academicYears.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select>
+        <select className="app-select min-h-11" aria-label="Class" value={draft.classId} onChange={(event) => setDraft((value) => ({ ...value, classId: event.target.value, streamId: "" }))}>
+          {references.classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select>
+        <select className="app-select min-h-11" aria-label="Stream" value={draft.streamId} onChange={(event) => setDraft((value) => ({ ...value, streamId: event.target.value }))}>
+          <option value="">All streams</option>
+          {streams.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select>
+        <select className="app-select min-h-11" aria-label="Subject" value={draft.subjectId} onChange={(event) => setDraft((value) => ({ ...value, subjectId: event.target.value }))}>
+          <option value="">No subject</option>
+          {references.subjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <label className="flex min-h-11 items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" checked={draft.isClassTeacher} onChange={(event) => setDraft((value) => ({ ...value, isClassTeacher: event.target.checked }))} className="h-5 w-5 accent-blue-600" />
+          Class teacher
+        </label>
+        <button type="button" disabled={saving} onClick={() => void addAssignment()} className="app-button-secondary min-h-11">
+          <Plus className="h-4 w-4" /> Add scope
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function Settings() {
-  const { schoolSettings, setSchoolSettings, users, updateUser } = useApp();
+  const { currentUser, schoolSettings, setSchoolSettings, updateUser, users } = useApp();
   const toast = useToast();
-  const [isCompressing, setIsCompressing] = useState(false);
-  const [activeSection, setActiveSection] = useState<SettingsSection>("profile");
-  const [newGrade, setNewGrade] = useState({ min: 0, grade: "A", comment: "Excellent" });
-  const [localSettings, setLocalSettings] = useState({
-    ...schoolSettings,
-    email: schoolSettings.email || "contact@edusphere.edu",
-    phone: schoolSettings.phone || "+1 234 567 890",
-    address: schoolSettings.address || "123 Education Lane, Academic City",
-    academicYear: schoolSettings.academicYear || "2026/2027",
-    currency: schoolSettings.currency || "UGX",
-    classFees: schoolSettings.classFees || {},
-    motto: schoolSettings.motto || "",
-    deoCode: schoolSettings.deoCode || "",
-    tin: schoolSettings.tin || "",
-    primaryColor: schoolSettings.primaryColor || "#0066CC",
-    secondaryColor: schoolSettings.secondaryColor || "#009900",
-    bankName: schoolSettings.bankName || "",
-    bankAccount: schoolSettings.bankAccount || "",
-    payCode: schoolSettings.payCode || "",
-    reportFooter: schoolSettings.reportFooter || "",
-    stampWarning: schoolSettings.stampWarning || "Not Valid without school Official Stamp",
-    assessmentModel: schoolSettings.assessmentModel || "percentage_100"
-  });
+  const [activeSection, setActiveSection] = React.useState<SettingsSection>("profile");
+  const [localSettings, setLocalSettings] = React.useState<EditableSettings>(() => editableSettings(schoolSettings));
+  const [pendingLogo, setPendingLogo] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
+  const [newClass, setNewClass] = React.useState("");
+  const [newGrade, setNewGrade] = React.useState({ min: 0, grade: "", comment: "" });
+  const [references, setReferences] = React.useState<AccessReferences | null>(null);
+  const [readiness, setReadiness] = React.useState<AccessReadiness | null>(null);
+  const [accessLoading, setAccessLoading] = React.useState(false);
+  const [roleUpdating, setRoleUpdating] = React.useState<string | null>(null);
+  const [linking, setLinking] = React.useState<string | null>(null);
+  const [linkOverrides, setLinkOverrides] = React.useState<Record<string, string>>({});
 
-  // Sync local settings when schoolSettings load (first time)
+  React.useEffect(() => setLocalSettings(editableSettings(schoolSettings)), [schoolSettings]);
+
+  const loadAccessData = React.useCallback(async () => {
+    setAccessLoading(true);
+    try {
+      const [referenceResult, readinessResult] = await Promise.all([
+        apiRequest<AccessReferences>("/api/access/reference-data"),
+        apiRequest<AccessReadiness>("/api/access/readiness"),
+      ]);
+      setReferences(referenceResult);
+      setReadiness(readinessResult);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to load access controls");
+    } finally {
+      setAccessLoading(false);
+    }
+  }, [toast]);
+
   React.useEffect(() => {
-    if (schoolSettings.name) {
-      setLocalSettings(prev => ({
-        ...prev,
-        ...schoolSettings,
-        name: schoolSettings.name || prev.name || "",
-        email: schoolSettings.email || prev.email || "",
-        phone: schoolSettings.phone || prev.phone || "",
-        address: schoolSettings.address || prev.address || "",
-        academicYear: schoolSettings.academicYear || prev.academicYear || "",
-        currency: schoolSettings.currency || prev.currency || "UGX",
-        motto: schoolSettings.motto || prev.motto || "",
-        deoCode: schoolSettings.deoCode || prev.deoCode || "",
-        tin: schoolSettings.tin || prev.tin || "",
-        primaryColor: schoolSettings.primaryColor || prev.primaryColor || "#0066CC",
-        secondaryColor: schoolSettings.secondaryColor || prev.secondaryColor || "#009900",
-        bankName: schoolSettings.bankName || prev.bankName || "",
-        bankAccount: schoolSettings.bankAccount || prev.bankAccount || "",
-        payCode: schoolSettings.payCode || prev.payCode || "",
-        reportFooter: schoolSettings.reportFooter || prev.reportFooter || "",
-        stampWarning: schoolSettings.stampWarning || prev.stampWarning || "",
-        classFees: schoolSettings.classFees || prev.classFees || {},
-        gradingScale: schoolSettings.gradingScale || prev.gradingScale || [],
-      }));
+    if (activeSection === "access" && !references) void loadAccessData();
+  }, [activeSection, loadAccessData, references]);
+
+  const updateReportSetting = <Key extends keyof ReportSettings>(key: Key, value: ReportSettings[Key]) => {
+    setLocalSettings((settings) => ({ ...settings, reportSettings: { ...settings.reportSettings, [key]: value } }));
+  };
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      toast.error("Use a PNG, JPEG, or WebP image.");
+      return;
     }
-  }, [schoolSettings]);
-
-  const addGrade = () => {
-    const scale = [...(localSettings.gradingScale || []), newGrade].sort((a, b) => b.min - a.min);
-    setLocalSettings({ ...localSettings, gradingScale: scale });
-    setNewGrade({ min: 0, grade: "", comment: "" });
+    if (file.size > 3 * 1024 * 1024) {
+      toast.error("Logo files must be 3 MB or smaller.");
+      return;
+    }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setPendingLogo(dataUrl);
+      setLocalSettings((settings) => ({ ...settings, logo: dataUrl }));
+    } catch {
+      toast.error("Unable to read the selected logo.");
+    }
   };
 
-  const removeGrade = (index: number) => {
-    const scale = (localSettings.gradingScale || []).filter((_, i) => i !== index);
-    setLocalSettings({ ...localSettings, gradingScale: scale });
-  };
-
-  const compressImage = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      setIsCompressing(true);
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target?.result as string;
-        img.onload = () => {
-          const canvas = document.createElement("canvas");
-          const MAX_WIDTH = 300;
-          const MAX_HEIGHT = 300;
-          let width = img.width;
-          let height = img.height;
-
-          if (width > height) {
-            if (width > MAX_WIDTH) {
-              height *= MAX_WIDTH / width;
-              width = MAX_WIDTH;
-            }
-          } else {
-            if (height > MAX_HEIGHT) {
-              width *= MAX_HEIGHT / height;
-              height = MAX_HEIGHT;
-            }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext("2d");
-          ctx?.drawImage(img, 0, 0, width, height);
-          const result = canvas.toDataURL("image/jpeg", 0.6);
-          setIsCompressing(false);
-          resolve(result);
-        };
-      };
-      reader.onerror = (error) => {
-        setIsCompressing(false);
-        reject(error);
-      };
-    });
-  };
-
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      try {
-        const compressed = await compressImage(file);
-        setLocalSettings({ ...localSettings, logo: compressed });
-      } catch (err) {
-        console.error("Logo compression failed", err);
+  const saveSettings = async () => {
+    setSaving(true);
+    try {
+      let logo = localSettings.logo;
+      let logoVariants = localSettings.logoVariants;
+      if (pendingLogo) {
+        const uploaded = await apiRequest<{ url: string; variants: LogoVariants }>("/api/storage/logo", { method: "POST", json: { dataUrl: pendingLogo } });
+        logo = uploaded.url;
+        logoVariants = uploaded.variants;
       }
+      await apiRequest("/api/settings/reports", { method: "PUT", json: localSettings.reportSettings });
+      await setSchoolSettings({ ...localSettings, logo, logoVariants, reportSettings: localSettings.reportSettings });
+      setPendingLogo(null);
+      toast.success("School settings saved.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to save school settings");
+    } finally {
+      setSaving(false);
     }
-  };
-
-  const PRIMARY_CLASSES = ["Baby Class", "Middle Class", "Top Class", "P.1", "P.2", "P.3", "P.4", "P.5", "P.6", "P.7"];
-  const SECONDARY_CLASSES = ["S.1", "S.2", "S.3", "S.4", "S.5", "S.6"];
-
-  const saveBranding = async () => {
-    const storedLogo = await uploadDataUrlAsset(localSettings.logo, "branding");
-    await setSchoolSettings({
-      name: localSettings.name,
-      logo: storedLogo,
-      level: localSettings.level as "Primary" | "Secondary",
-      classes: localSettings.classes,
-      currency: localSettings.currency,
-      academicYear: localSettings.academicYear,
-      classFees: localSettings.classFees,
-      gradingScale: localSettings.gradingScale,
-      address: localSettings.address,
-      phone: localSettings.phone,
-      email: localSettings.email,
-      motto: localSettings.motto,
-      deoCode: localSettings.deoCode,
-      tin: localSettings.tin,
-      primaryColor: localSettings.primaryColor,
-      secondaryColor: localSettings.secondaryColor,
-      bankName: localSettings.bankName,
-      bankAccount: localSettings.bankAccount,
-      payCode: localSettings.payCode,
-      reportFooter: localSettings.reportFooter,
-      stampWarning: localSettings.stampWarning,
-      assessmentModel: localSettings.assessmentModel
-    });
-    toast.success("Settings saved successfully.");
-  };
-
-  const handleLevelChange = (level: "Primary" | "Secondary") => {
-    const newClasses = level === "Primary" ? PRIMARY_CLASSES : SECONDARY_CLASSES;
-    setLocalSettings({ ...localSettings, level, classes: newClasses });
   };
 
   const addClass = () => {
-    const className = prompt("Enter new class name:");
-    if (className && !localSettings.classes.includes(className)) {
-      setLocalSettings({ 
-        ...localSettings, 
-        classes: [...localSettings.classes, className] 
-      });
+    const value = newClass.trim();
+    if (!value || localSettings.classes.includes(value)) return;
+    setLocalSettings((settings) => ({ ...settings, classes: [...settings.classes, value] }));
+    setNewClass("");
+  };
+
+  const addGrade = () => {
+    if (!newGrade.grade.trim()) return;
+    setLocalSettings((settings) => ({
+      ...settings,
+      gradingScale: [...settings.gradingScale, { ...newGrade, grade: newGrade.grade.trim(), comment: newGrade.comment.trim() }].sort((left, right) => right.min - left.min),
+    }));
+    setNewGrade({ min: 0, grade: "", comment: "" });
+  };
+
+  const rolesFor = (user: User): SchoolRole[] => user.roles?.length
+    ? user.roles
+    : isSchoolRole(user.role) ? [user.role] : [];
+
+  const toggleRole = async (user: User, role: SchoolRole) => {
+    const currentRoles = rolesFor(user);
+    const nextRoles = currentRoles.includes(role) ? currentRoles.filter((item) => item !== role) : [...currentRoles, role];
+    if (!nextRoles.length || user.id === currentUser?.id) return;
+    setRoleUpdating(user.id);
+    try {
+      await updateUser(user.id, { roles: nextRoles });
+      setReferences(null);
+      toast.success("School roles updated.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to update roles");
+    } finally {
+      setRoleUpdating(null);
     }
   };
 
-  const removeClass = (className: string) => {
-    setLocalSettings({ 
-      ...localSettings, 
-      classes: (localSettings.classes || []).filter(c => c !== className) 
-    });
+  const linkAccount = async (user: User, kind: "parent" | "student" | "staff", recordId: string) => {
+    if (!recordId) return;
+    const key = `${kind}:${user.id}`;
+    setLinking(key);
+    try {
+      await apiRequest(`/api/access/links/${kind}`, { method: "PUT", json: { userId: user.id, recordId } });
+      setLinkOverrides((value) => ({ ...value, [key]: recordId }));
+      await loadAccessData();
+      toast.success("Account record linked.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to link account");
+    } finally {
+      setLinking(null);
+    }
   };
 
-  const handleFeeChange = (className: string, amount: number) => {
-    setLocalSettings({
-      ...localSettings,
-      classFees: {
-        ...(localSettings.classFees || {}),
-        [className]: amount
-      }
-    });
+  const enableEnforcement = async () => {
+    if (!readiness || readiness.totalUnresolved > 0) return;
+    try {
+      await apiRequest("/api/access/enforcement", { method: "PUT", json: { mode: "enforce" } });
+      await loadAccessData();
+      toast.success("Record-level access enforcement enabled.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to enable enforcement");
+    }
   };
 
-  const updateRole = async (userId: string, role: string) => {
-    await updateUser(userId, { role });
-  };
+  const logoPreview = pendingLogo || localSettings.logoVariants?.square || localSettings.logo;
+  const activeOption = sectionOptions.find((section) => section.id === activeSection)!;
 
   return (
-    <div className="app-page mx-auto max-w-6xl">
-      <div>
-        <p className="app-page-kicker">Administration</p>
-        <h1 className="app-page-title">System Settings</h1>
-        <p className="app-page-subtitle">Configure school branding, classes, access, and global preferences.</p>
+    <div className="app-page mx-auto max-w-7xl">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="app-page-kicker">Administration</p>
+          <h1 className="app-page-title">System settings</h1>
+          <p className="app-page-subtitle">School identity, report presentation, academic rules, and access.</p>
+        </div>
+        <button type="button" disabled={saving} onClick={() => void saveSettings()} className="app-button-primary min-h-11 w-full sm:w-auto">
+          <Save className="h-4 w-4" /> {saving ? "Saving..." : "Save settings"}
+        </button>
       </div>
 
-      <label className="app-panel block space-y-2 lg:hidden">
-        <span className="text-sm font-semibold text-slate-700">Settings section</span>
-        <select className="app-select" value={activeSection} onChange={(event) => setActiveSection(event.target.value as SettingsSection)}>
-          <option value="profile">School profile</option>
-          <option value="fees">Class fees</option>
-          <option value="grading">Grading scale</option>
-          <option value="access">User access</option>
-          <option value="danger">Danger zone</option>
+      <label className="block lg:hidden">
+        <span className="mb-2 block text-sm font-semibold text-slate-700">Settings section</span>
+        <select className="app-select min-h-11" value={activeSection} onChange={(event) => setActiveSection(event.target.value as SettingsSection)}>
+          {sectionOptions.map((section) => <option key={section.id} value={section.id}>{section.label}</option>)}
         </select>
       </label>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
-        {/* School Branding Section */}
-        <div className="space-y-6 lg:col-span-2 lg:space-y-8">
-          <div className={cn("app-panel space-y-6 sm:space-y-8", activeSection !== "profile" && "hidden lg:block")}>
-            <div className="flex items-center gap-3 pb-6 border-b border-gray-100">
-              <School className="w-6 h-6 text-blue-600" />
-              <h3 className="text-xl font-bold text-gray-900">School Profile</h3>
-            </div>
-
-            <div className="flex flex-col items-start gap-6 md:flex-row md:gap-8">
-              {/* Logo Upload */}
-              <div className="space-y-4">
-                <label className="text-sm font-bold text-gray-700 uppercase tracking-widest">School Badge / Logo</label>
-                <div className="group relative flex h-32 w-32 items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 sm:h-40 sm:w-40">
-                  {localSettings.logo ? (
-                    <img src={localSettings.logo} alt="Logo" className="w-full h-full object-contain p-4" />
-                  ) : (
-                    <div className="text-center p-4">
-                      <Upload className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                      <p className="text-[10px] text-gray-400 font-bold uppercase">Upload Logo</p>
-                    </div>
-                  )}
-                  <input 
-                    type="file" 
-                    accept="image/*"
-                    onChange={handleLogoUpload}
-                    className="absolute inset-0 opacity-0 cursor-pointer"
-                    disabled={isCompressing}
-                  />
-                </div>
-              </div>
-
-              <div className="flex-1 space-y-4 w-full">
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700">Official School Name</label>
-                  <input 
-                    type="text"
-                    value={localSettings.name}
-                    onChange={(e) => setLocalSettings({ ...localSettings, name: e.target.value })}
-                    className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
-                  />
-                </div>
-                
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-gray-700">Currency</label>
-                    <input 
-                      type="text"
-                      value={localSettings.currency}
-                      onChange={(e) => setLocalSettings({ ...localSettings, currency: e.target.value })}
-                      placeholder="e.g. UGX"
-                      className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none font-bold text-blue-600"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-gray-700">Academic Year</label>
-                    <input 
-                      type="text"
-                      value={localSettings.academicYear}
-                      onChange={(e) => setLocalSettings({ ...localSettings, academicYear: e.target.value })}
-                      className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <label className="space-y-1">
-                    <span className="text-sm font-medium text-gray-700">Motto</span>
-                    <input className="app-input" value={localSettings.motto} onChange={(e) => setLocalSettings({ ...localSettings, motto: e.target.value })} />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-sm font-medium text-gray-700">DEO Code</span>
-                    <input className="app-input" value={localSettings.deoCode} onChange={(e) => setLocalSettings({ ...localSettings, deoCode: e.target.value })} />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-sm font-medium text-gray-700">Address / P.O. Box</span>
-                    <input className="app-input" value={localSettings.address} onChange={(e) => setLocalSettings({ ...localSettings, address: e.target.value })} />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-sm font-medium text-gray-700">TIN</span>
-                    <input className="app-input" value={localSettings.tin} onChange={(e) => setLocalSettings({ ...localSettings, tin: e.target.value })} />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-sm font-medium text-gray-700">Phone</span>
-                    <input className="app-input" value={localSettings.phone} onChange={(e) => setLocalSettings({ ...localSettings, phone: e.target.value })} />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-sm font-medium text-gray-700">Email</span>
-                    <input className="app-input" type="email" value={localSettings.email} onChange={(e) => setLocalSettings({ ...localSettings, email: e.target.value })} />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-sm font-medium text-gray-700">Primary color</span>
-                    <input className="app-input h-11" type="color" value={localSettings.primaryColor} onChange={(e) => setLocalSettings({ ...localSettings, primaryColor: e.target.value })} />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-sm font-medium text-gray-700">Secondary color</span>
-                    <input className="app-input h-11" type="color" value={localSettings.secondaryColor} onChange={(e) => setLocalSettings({ ...localSettings, secondaryColor: e.target.value })} />
-                  </label>
-                </div>
-                <div className="grid grid-cols-1 gap-4 border-t border-gray-100 pt-4 md:grid-cols-2">
-                  <label className="space-y-1">
-                    <span className="text-sm font-medium text-gray-700">Bank name</span>
-                    <input className="app-input" value={localSettings.bankName} onChange={(e) => setLocalSettings({ ...localSettings, bankName: e.target.value })} />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-sm font-medium text-gray-700">Bank account</span>
-                    <input className="app-input" value={localSettings.bankAccount} onChange={(e) => setLocalSettings({ ...localSettings, bankAccount: e.target.value })} />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-sm font-medium text-gray-700">School pay-code</span>
-                    <input className="app-input" value={localSettings.payCode} onChange={(e) => setLocalSettings({ ...localSettings, payCode: e.target.value })} />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-sm font-medium text-gray-700">Assessment model</span>
-                    <select className="app-select" value={localSettings.assessmentModel} onChange={(e) => setLocalSettings({ ...localSettings, assessmentModel: e.target.value as "competency_3" | "percentage_100" })}>
-                      <option value="competency_3">Competency A1-A4 (0-3)</option>
-                      <option value="percentage_100">Percentage A1-A4 (0-100)</option>
-                    </select>
-                  </label>
-                  <label className="space-y-1 md:col-span-2">
-                    <span className="text-sm font-medium text-gray-700">Official stamp warning</span>
-                    <input className="app-input" value={localSettings.stampWarning} onChange={(e) => setLocalSettings({ ...localSettings, stampWarning: e.target.value })} />
-                  </label>
-                  <label className="space-y-1 md:col-span-2">
-                    <span className="text-sm font-medium text-gray-700">Report footer</span>
-                    <input className="app-input" value={localSettings.reportFooter} onChange={(e) => setLocalSettings({ ...localSettings, reportFooter: e.target.value })} />
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Class Fees Section */}
-          <div className={cn("app-panel space-y-6", activeSection !== "fees" && "hidden lg:block")}>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
-                <School className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">Class Fees Configuration</h3>
-                <p className="text-xs text-gray-500">Set the standard total fees for each class per term.</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[400px] overflow-y-auto pr-2">
-              {localSettings.classes.map((className) => (
-                <div key={className} className="space-y-2 rounded-lg border border-gray-100 bg-gray-50 p-4">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{className}</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">
-                      {localSettings.currency}
-                    </span>
-                    <input 
-                      type="number"
-                      value={localSettings.classFees?.[className] || 0}
-                      onChange={(e) => handleFeeChange(className, parseInt(e.target.value) || 0)}
-                    className="app-input pl-12 font-semibold"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            <div className="flex justify-end pt-4">
-               <button 
-                onClick={saveBranding}
-                className="app-button-primary w-full bg-emerald-600 hover:bg-emerald-700 sm:w-auto"
-               >
-                 <Save className="w-4 h-4" />
-                 Update Fee Structure
-               </button>
-            </div>
-          </div>
-
-          {/* Grading Scale Section */}
-          <div className={cn("app-panel", activeSection !== "grading" && "hidden lg:block")}>
-            <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <GraduationCap className="w-5 h-5 text-blue-600" />
-              Grading Scale System
-            </h3>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-3 rounded-lg border border-gray-100 bg-gray-50 p-4 sm:grid-cols-4">
-                <div className="space-y-1">
-                  <span className="text-[10px] font-black uppercase text-gray-400">Min %</span>
-                  <input 
-                    type="number" 
-                    value={newGrade.min}
-                    onChange={(e) => setNewGrade({ ...newGrade, min: parseInt(e.target.value) || 0 })}
-                    className="app-input"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <span className="text-[10px] font-black uppercase text-gray-400">Grade</span>
-                  <input 
-                    type="text" 
-                    value={newGrade.grade}
-                    placeholder="A"
-                    onChange={(e) => setNewGrade({ ...newGrade, grade: e.target.value })}
-                    className="app-input"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <span className="text-[10px] font-black uppercase text-gray-400">Comment</span>
-                  <input 
-                    type="text" 
-                    value={newGrade.comment}
-                    placeholder="Excellent"
-                    onChange={(e) => setNewGrade({ ...newGrade, comment: e.target.value })}
-                    className="app-input"
-                  />
-                </div>
-                <div className="flex items-end">
-                  <button 
-                    onClick={addGrade}
-                    className="app-button-primary w-full"
-                  >
-                    Add
-                  </button>
-                </div>
-              </div>
-              
-              <div className="space-y-3 sm:hidden">
-                {(localSettings.gradingScale || []).map((grade, index) => (
-                  <div key={`${grade.grade}-${grade.min}`} className="app-mobile-record flex items-start justify-between gap-4">
-                    <div>
-                      <p className="font-semibold text-slate-950">{grade.grade} from {grade.min}%</p>
-                      <p className="mt-1 text-sm text-slate-500">{grade.comment}</p>
-                    </div>
-                    <button type="button" onClick={() => removeGrade(index)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600" aria-label={`Remove grade ${grade.grade}`}>
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
-                {(localSettings.gradingScale || []).length === 0 && <div className="app-empty-state">No grading scale defined.</div>}
-              </div>
-
-              <div className="hidden overflow-x-auto rounded-lg border border-gray-100 sm:block" role="region" aria-label="Grading scale" tabIndex={0}>
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-gray-50 text-gray-500 font-bold uppercase tracking-tighter">
-                    <tr>
-                      <th className="px-6 py-3">Score &ge;</th>
-                      <th className="px-6 py-3">Grade</th>
-                      <th className="px-6 py-3">Recommendation</th>
-                      <th className="px-6 py-3 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {(localSettings.gradingScale || []).map((g, i) => (
-                      <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-6 py-3 font-mono font-bold text-blue-600">{g.min}%</td>
-                        <td className="px-6 py-3"><span className="px-2 py-0.5 bg-gray-100 rounded-md font-black">{g.grade}</span></td>
-                        <td className="px-6 py-3 text-gray-500 italic">{g.comment}</td>
-                        <td className="px-6 py-3 text-right">
-                          <button onClick={() => removeGrade(i)} className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-500" aria-label={`Remove grade ${g.grade}`}>
-                            <X className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {(localSettings.gradingScale || []).length === 0 && (
-                      <tr>
-                        <td colSpan={4} className="px-6 py-10 text-center text-gray-400 italic">No grading scale defined.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-6">
-              <button 
-                onClick={saveBranding}
-                disabled={isCompressing}
-                className="app-button-primary w-full sm:w-auto"
-              >
-                <Save className="w-4 h-4" />
-                {isCompressing ? "Processing..." : "Save Configuration"}
+      <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[14rem_minmax(0,1fr)]">
+        <nav className="hidden border-r border-slate-200 pr-4 lg:block" aria-label="Settings sections">
+          <div className="sticky top-2 space-y-1">
+            {sectionOptions.map((section) => (
+              <button key={section.id} type="button" onClick={() => setActiveSection(section.id)} className={cn("flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-medium", activeSection === section.id ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-100")}>
+                <section.icon className="h-4 w-4" /> {section.label}
               </button>
-            </div>
+            ))}
           </div>
-        </div>
+        </nav>
 
-        {/* Role Management Section */}
-        <div className="space-y-6">
-          <div className={cn("app-panel space-y-6", activeSection !== "access" && "hidden lg:block")}>
-            <div className="flex items-center gap-3">
-              <Shield className="w-6 h-6 text-purple-600" />
-              <h3 className="text-lg font-bold text-gray-900">User Access</h3>
-            </div>
-            
-            <p className="text-xs text-gray-500 leading-relaxed italic">
-              Assign specific roles to users to control which modules they can access.
-            </p>
+        <section className="min-w-0" aria-labelledby={`settings-${activeSection}`}>
+          <div className="mb-4 flex items-center gap-3 lg:hidden">
+            <activeOption.icon className="h-5 w-5 text-blue-600" />
+            <h2 id={`settings-${activeSection}`} className="text-lg font-semibold text-slate-950">{activeOption.label}</h2>
+          </div>
 
-            <div className="space-y-4">
-              {users.map((user) => (
-                <div key={user.id} className="space-y-3 rounded-lg border border-gray-100 bg-gray-50 p-4">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="text-sm font-bold text-gray-900">{user.name}</p>
-                      <p className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">{user.email}</p>
-                    </div>
-                    <div className="p-1 px-2.5 bg-blue-50 text-blue-600 text-[10px] font-extrabold rounded-full uppercase">
-                      {user.role}
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-2">
-                    {["admin", "teacher", "accountant", "parent"].map((role) => (
-                      <button 
-                        key={role}
-                        onClick={() => updateRole(user.id, role)}
-                        className={cn(
-                          "min-h-11 rounded-lg px-2 py-2 text-xs font-semibold capitalize transition-colors",
-                          user.role === role 
-                            ? "bg-blue-600 text-white shadow-sm" 
-                            : "bg-white text-gray-400 hover:bg-gray-200 border border-gray-100"
-                        )}
-                      >
-                        {role}
-                      </button>
-                    ))}
-                  </div>
+          {activeSection === "profile" && (
+            <div className="app-panel space-y-6">
+              <div>
+                <h2 id="settings-profile" className="text-lg font-semibold text-slate-950">School profile</h2>
+                <p className="mt-1 text-sm text-slate-500">Official identity and contact details.</p>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label className="sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Official school name</span><input className="app-input" value={localSettings.name} onChange={(event) => setLocalSettings((value) => ({ ...value, name: event.target.value }))} /></label>
+                <label><span className="mb-2 block text-sm font-medium text-slate-700">School level</span><select className="app-select" value={localSettings.level} onChange={(event) => setLocalSettings((value) => ({ ...value, level: event.target.value as "Primary" | "Secondary" }))}><option>Primary</option><option>Secondary</option></select></label>
+                <label><span className="mb-2 block text-sm font-medium text-slate-700">Academic year</span><input className="app-input" value={localSettings.academicYear} onChange={(event) => setLocalSettings((value) => ({ ...value, academicYear: event.target.value }))} /></label>
+                <label className="sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Motto</span><input className="app-input" value={localSettings.motto} onChange={(event) => setLocalSettings((value) => ({ ...value, motto: event.target.value }))} /></label>
+                <label><span className="mb-2 block text-sm font-medium text-slate-700">Email</span><input type="email" className="app-input" value={localSettings.email} onChange={(event) => setLocalSettings((value) => ({ ...value, email: event.target.value }))} /></label>
+                <label><span className="mb-2 block text-sm font-medium text-slate-700">Phone</span><input className="app-input" value={localSettings.phone} onChange={(event) => setLocalSettings((value) => ({ ...value, phone: event.target.value }))} /></label>
+                <label className="sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Address or P.O. Box</span><input className="app-input" value={localSettings.address} onChange={(event) => setLocalSettings((value) => ({ ...value, address: event.target.value }))} /></label>
+                <label><span className="mb-2 block text-sm font-medium text-slate-700">DEO code</span><input className="app-input" value={localSettings.deoCode} onChange={(event) => setLocalSettings((value) => ({ ...value, deoCode: event.target.value }))} /></label>
+                <label><span className="mb-2 block text-sm font-medium text-slate-700">TIN</span><input className="app-input" value={localSettings.tin} onChange={(event) => setLocalSettings((value) => ({ ...value, tin: event.target.value }))} /></label>
+              </div>
+              <div className="border-t border-slate-200 pt-5">
+                <h3 className="text-sm font-semibold text-slate-900">Classes</h3>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {localSettings.classes.map((className) => (
+                    <span key={className} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-slate-100 px-3 text-sm text-slate-700">{className}<button type="button" className="text-slate-400 hover:text-rose-600" onClick={() => setLocalSettings((value) => ({ ...value, classes: value.classes.filter((item) => item !== className) }))} aria-label={`Remove ${className}`}><Trash2 className="h-3.5 w-3.5" /></button></span>
+                  ))}
                 </div>
-              ))}
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row"><input className="app-input" value={newClass} onChange={(event) => setNewClass(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addClass(); } }} placeholder="Class name" /><button type="button" onClick={addClass} className="app-button-secondary min-h-11 shrink-0"><Plus className="h-4 w-4" /> Add class</button></div>
+              </div>
             </div>
+          )}
 
-            <button className="app-button-secondary w-full border-2 border-dashed">
-              <UserCheck className="w-4 h-4" />
-              Invite New User
-            </button>
-          </div>
+          {activeSection === "reports" && (
+            <div className="app-panel space-y-6">
+              <div><h2 id="settings-reports" className="text-lg font-semibold text-slate-950">Reports and identity</h2><p className="mt-1 text-sm text-slate-500">Shared branding and report defaults.</p></div>
+              <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+                <div className="space-y-6">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <div className="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-300 bg-slate-50">
+                      {logoPreview ? <img src={logoPreview} alt="School logo preview" className="h-full w-full object-contain p-2" /> : <ImageIcon className="h-8 w-8 text-slate-300" />}
+                    </div>
+                    <div><label className="app-button-secondary min-h-11 cursor-pointer"><Upload className="h-4 w-4" /> Select logo<input type="file" className="sr-only" accept="image/png,image/jpeg,image/webp" onChange={(event) => void handleLogoUpload(event)} /></label><p className="mt-2 text-xs text-slate-500">PNG, JPEG, or WebP, up to 3 MB.</p></div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <label><span className="mb-2 block text-sm font-medium text-slate-700">Primary color</span><span className="flex gap-2"><input type="color" className="h-11 w-14 rounded-lg border border-slate-200 bg-white p-1" value={localSettings.primaryColor} onChange={(event) => setLocalSettings((value) => ({ ...value, primaryColor: event.target.value }))} /><input className="app-input" value={localSettings.primaryColor} onChange={(event) => setLocalSettings((value) => ({ ...value, primaryColor: event.target.value }))} /></span></label>
+                    <label><span className="mb-2 block text-sm font-medium text-slate-700">Secondary color</span><span className="flex gap-2"><input type="color" className="h-11 w-14 rounded-lg border border-slate-200 bg-white p-1" value={localSettings.secondaryColor} onChange={(event) => setLocalSettings((value) => ({ ...value, secondaryColor: event.target.value }))} /><input className="app-input" value={localSettings.secondaryColor} onChange={(event) => setLocalSettings((value) => ({ ...value, secondaryColor: event.target.value }))} /></span></label>
+                  </div>
+                  <div><span className="mb-2 block text-sm font-medium text-slate-700">Report preset</span><div className="grid grid-cols-3 rounded-lg bg-slate-100 p-1">{REPORT_TEMPLATE_PRESETS.map((preset) => <button key={preset} type="button" onClick={() => updateReportSetting("preset", preset)} className={cn("min-h-10 rounded-md px-2 text-xs font-semibold capitalize", localSettings.reportSettings.preset === preset ? "bg-white text-slate-950 shadow-sm" : "text-slate-500")}>{preset}</button>)}</div></div>
+                  <label><span className="mb-2 block text-sm font-medium text-slate-700">Report title</span><input className="app-input" value={localSettings.reportSettings.title} onChange={(event) => updateReportSetting("title", event.target.value)} /></label>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><label><span className="mb-2 block text-sm font-medium text-slate-700">Class teacher label</span><input className="app-input" value={localSettings.reportSettings.classTeacherLabel} onChange={(event) => updateReportSetting("classTeacherLabel", event.target.value)} /></label><label><span className="mb-2 block text-sm font-medium text-slate-700">Head teacher label</span><input className="app-input" value={localSettings.reportSettings.headTeacherLabel} onChange={(event) => updateReportSetting("headTeacherLabel", event.target.value)} /></label></div>
+                  <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                    <ToggleRow label="Show school logo" checked={localSettings.reportSettings.showLogo} onChange={(value) => updateReportSetting("showLogo", value)} />
+                    <ToggleRow label="Show student photo" checked={localSettings.reportSettings.showStudentPhoto} onChange={(value) => updateReportSetting("showStudentPhoto", value)} />
+                    <ToggleRow label="Show class position" checked={localSettings.reportSettings.showPosition} onChange={(value) => updateReportSetting("showPosition", value)} />
+                    <ToggleRow label="Show attendance" checked={localSettings.reportSettings.showAttendance} onChange={(value) => updateReportSetting("showAttendance", value)} />
+                    <ToggleRow label="Show fee summary" checked={localSettings.reportSettings.showFees} onChange={(value) => updateReportSetting("showFees", value)} />
+                    <ToggleRow label="Show health summary" checked={localSettings.reportSettings.showHealth} onChange={(value) => updateReportSetting("showHealth", value)} />
+                    <ToggleRow label="Show library summary" checked={localSettings.reportSettings.showLibrary} onChange={(value) => updateReportSetting("showLibrary", value)} />
+                  </div>
+                  <label><span className="mb-2 block text-sm font-medium text-slate-700">Report footer</span><input className="app-input" value={localSettings.reportFooter} onChange={(event) => setLocalSettings((value) => ({ ...value, reportFooter: event.target.value }))} /></label>
+                  <label><span className="mb-2 block text-sm font-medium text-slate-700">Official stamp notice</span><input className="app-input" value={localSettings.stampWarning} onChange={(event) => setLocalSettings((value) => ({ ...value, stampWarning: event.target.value }))} /></label>
+                </div>
+                <aside className="border-t border-slate-200 pt-6 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0" aria-label="Report preview">
+                  <div className="sticky top-2 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <div className="h-2" style={{ backgroundColor: localSettings.primaryColor }} />
+                    <div className="p-5 text-center">
+                      {localSettings.reportSettings.showLogo && logoPreview && <img src={logoPreview} alt="" className="mx-auto mb-3 h-14 w-14 object-contain" />}
+                      <p className="text-sm font-bold text-slate-950">{localSettings.name || "School name"}</p><p className="mt-1 text-[10px] text-slate-500">{localSettings.motto}</p>
+                      <p className="mt-4 border-y border-slate-200 py-2 text-[10px] font-bold text-slate-800">{localSettings.reportSettings.title}</p>
+                      <div className="mt-4 space-y-2 text-left text-[10px] text-slate-600"><p className="flex justify-between"><span>Student</span><strong>Sample learner</strong></p><p className="flex justify-between"><span>Class</span><strong>P.6</strong></p>{localSettings.reportSettings.showPosition && <p className="flex justify-between"><span>Position</span><strong>4 / 32</strong></p>}</div>
+                      <div className="mt-4 h-20 rounded bg-slate-100" />
+                      <div className="mt-3 flex flex-wrap gap-1">{localSettings.reportSettings.showAttendance && <span className="rounded bg-slate-100 px-2 py-1 text-[9px]">Attendance</span>}{localSettings.reportSettings.showFees && <span className="rounded bg-slate-100 px-2 py-1 text-[9px]">Fees</span>}{localSettings.reportSettings.showHealth && <span className="rounded bg-slate-100 px-2 py-1 text-[9px]">Health</span>}{localSettings.reportSettings.showLibrary && <span className="rounded bg-slate-100 px-2 py-1 text-[9px]">Library</span>}</div>
+                    </div>
+                  </div>
+                </aside>
+              </div>
+            </div>
+          )}
 
-          <div className={cn("space-y-4 rounded-lg bg-rose-900 p-6 text-white shadow-sm", activeSection !== "danger" && "hidden lg:block")}>
-            <h4 className="text-sm font-bold flex items-center gap-2">
-              <Shield className="w-4 h-4 text-rose-400" />
-              Danger Zone
-            </h4>
-            <p className="text-[11px] text-rose-200 leading-relaxed">
-              Reset school data will permanently delete all students, transactions, and academic records. This action cannot be undone.
-            </p>
-            <button className="app-button w-full bg-rose-500 text-white hover:bg-rose-600">
-              Factory Reset System
-            </button>
-          </div>
-        </div>
+          {activeSection === "fees" && (
+            <div className="app-panel space-y-6"><div><h2 id="settings-fees" className="text-lg font-semibold text-slate-950">Class fees</h2><p className="mt-1 text-sm text-slate-500">Standard term fee by class.</p></div><div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">{localSettings.classes.map((className) => <label key={className} className="rounded-lg border border-slate-200 p-4"><span className="mb-2 block text-sm font-semibold text-slate-800">{className}</span><span className="relative block"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-500">{localSettings.currency}</span><input type="number" min={0} className="app-input pl-14" value={localSettings.classFees[className] || 0} onChange={(event) => setLocalSettings((value) => ({ ...value, classFees: { ...value.classFees, [className]: Number(event.target.value) || 0 } }))} /></span><span className="mt-2 block text-xs text-slate-500">{formatCurrency(localSettings.classFees[className] || 0, localSettings.currency)}</span></label>)}</div><div className="grid grid-cols-1 gap-4 border-t border-slate-200 pt-5 sm:grid-cols-2"><label><span className="mb-2 block text-sm font-medium text-slate-700">Currency</span><input className="app-input" value={localSettings.currency} onChange={(event) => setLocalSettings((value) => ({ ...value, currency: event.target.value.toUpperCase() }))} /></label><label><span className="mb-2 block text-sm font-medium text-slate-700">Assessment model</span><select className="app-select" value={localSettings.assessmentModel} onChange={(event) => setLocalSettings((value) => ({ ...value, assessmentModel: event.target.value as EditableSettings["assessmentModel"] }))}><option value="percentage_100">Percentage (0-100)</option><option value="competency_3">Competency (0-3)</option></select></label><label><span className="mb-2 block text-sm font-medium text-slate-700">Bank name</span><input className="app-input" value={localSettings.bankName} onChange={(event) => setLocalSettings((value) => ({ ...value, bankName: event.target.value }))} /></label><label><span className="mb-2 block text-sm font-medium text-slate-700">Bank account</span><input className="app-input" value={localSettings.bankAccount} onChange={(event) => setLocalSettings((value) => ({ ...value, bankAccount: event.target.value }))} /></label><label><span className="mb-2 block text-sm font-medium text-slate-700">School pay code</span><input className="app-input" value={localSettings.payCode} onChange={(event) => setLocalSettings((value) => ({ ...value, payCode: event.target.value }))} /></label></div></div>
+          )}
+
+          {activeSection === "grading" && (
+            <div className="app-panel space-y-6"><div><h2 id="settings-grading" className="text-lg font-semibold text-slate-950">Grading scale</h2><p className="mt-1 text-sm text-slate-500">Ordered score boundaries and report comments.</p></div><div className="grid grid-cols-1 gap-3 rounded-lg bg-slate-50 p-4 sm:grid-cols-[7rem_8rem_minmax(0,1fr)_auto]"><label><span className="mb-1 block text-xs font-semibold text-slate-500">Minimum</span><input type="number" min={0} max={100} className="app-input" value={newGrade.min} onChange={(event) => setNewGrade((value) => ({ ...value, min: Number(event.target.value) || 0 }))} /></label><label><span className="mb-1 block text-xs font-semibold text-slate-500">Grade</span><input className="app-input" value={newGrade.grade} onChange={(event) => setNewGrade((value) => ({ ...value, grade: event.target.value }))} /></label><label><span className="mb-1 block text-xs font-semibold text-slate-500">Comment</span><input className="app-input" value={newGrade.comment} onChange={(event) => setNewGrade((value) => ({ ...value, comment: event.target.value }))} /></label><button type="button" onClick={addGrade} className="app-button-primary min-h-11 self-end"><Plus className="h-4 w-4" /> Add</button></div><div className="divide-y divide-slate-200 rounded-lg border border-slate-200">{localSettings.gradingScale.map((grade, index) => <div key={`${grade.grade}-${grade.min}`} className="grid grid-cols-[4rem_minmax(0,1fr)_2.75rem] items-center gap-3 p-3 sm:grid-cols-[5rem_6rem_minmax(0,1fr)_2.75rem]"><strong className="text-sm text-blue-700">{grade.min}%</strong><span className="hidden text-sm font-semibold text-slate-900 sm:block">{grade.grade}</span><span className="min-w-0 text-sm text-slate-600"><strong className="mr-2 sm:hidden">{grade.grade}</strong>{grade.comment}</span><button type="button" className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600" onClick={() => setLocalSettings((value) => ({ ...value, gradingScale: value.gradingScale.filter((_, itemIndex) => itemIndex !== index) }))} aria-label={`Remove ${grade.grade}`}><Trash2 className="h-4 w-4" /></button></div>)}{!localSettings.gradingScale.length && <p className="p-6 text-center text-sm text-slate-500">No grading bands configured.</p>}</div></div>
+          )}
+
+          {activeSection === "access" && (
+            <div className="space-y-6">
+              <div className="app-panel space-y-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><h2 id="settings-access" className="text-lg font-semibold text-slate-950">Access control</h2><p className="mt-1 text-sm text-slate-500">School roles, linked identities, and teaching scopes.</p></div>{references && <span className={cn("app-badge self-start", references.authorizationMode === "enforce" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800")}>{references.authorizationMode === "enforce" ? "Enforced" : "Audit mode"}</span>}</div>
+                {accessLoading && !references ? <p className="py-8 text-center text-sm text-slate-500">Loading access controls...</p> : readiness && references ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><div><p className="text-2xl font-bold text-slate-950">{readiness.totalUnresolved}</p><p className="text-xs text-slate-500">Unresolved</p></div><div><p className="text-2xl font-bold text-slate-950">{readiness.unlinkedParents}</p><p className="text-xs text-slate-500">Parents</p></div><div><p className="text-2xl font-bold text-slate-950">{readiness.unlinkedStudents}</p><p className="text-xs text-slate-500">Students</p></div><div><p className="text-2xl font-bold text-slate-950">{readiness.unassignedTeachers}</p><p className="text-xs text-slate-500">Teachers</p></div></div>
+                    {references.authorizationMode === "audit" && <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex gap-3"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><p className="text-sm text-amber-900">Resolve all account links and teaching scopes before enabling enforcement.</p></div><button type="button" disabled={readiness.totalUnresolved > 0} onClick={() => void enableEnforcement()} className="app-button-primary min-h-11 shrink-0 disabled:opacity-50"><LockKeyhole className="h-4 w-4" /> Enable enforcement</button></div>}
+                  </div>
+                ) : null}
+              </div>
+
+              {references && <div className="space-y-4">{users.map((user) => {
+                const userRoles = rolesFor(user);
+                const linkedParent = linkOverrides[`parent:${user.id}`] || user.parentId || "";
+                const linkedStudent = linkOverrides[`student:${user.id}`] || user.studentId || "";
+                const linkedStaff = linkOverrides[`staff:${user.id}`] || user.staffId || "";
+                return (
+                  <article key={user.id} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-slate-950">{user.name}</h3><p className="truncate text-xs text-slate-500">{user.email}</p></div>{user.platformRole && <span className="app-badge self-start bg-slate-900 text-white">Platform {user.platformRole.replace("_", " ")}</span>}</div>
+                    <fieldset className="mt-4" disabled={roleUpdating === user.id || user.id === currentUser?.id}><legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">School roles</legend><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">{SCHOOL_ROLES.map((role) => { const checked = userRoles.includes(role); return <label key={role} className={cn("flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 text-xs font-medium", checked ? "border-blue-300 bg-blue-50 text-blue-800" : "border-slate-200 text-slate-600", (roleUpdating === user.id || user.id === currentUser?.id) && "cursor-not-allowed opacity-60")}><input type="checkbox" checked={checked} onChange={() => void toggleRole(user, role)} className="h-4 w-4 accent-blue-600" /><span>{roleLabels[role]}</span></label>; })}</div>{user.id === currentUser?.id && <p className="mt-2 text-xs text-slate-500">Your own school roles require another administrator.</p>}</fieldset>
+                    <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
+                      {userRoles.includes("parent") && <label><span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600"><Link2 className="h-3.5 w-3.5" /> Parent record</span><select className="app-select min-h-11" value={linkedParent} disabled={linking === `parent:${user.id}`} onChange={(event) => void linkAccount(user, "parent", event.target.value)}><option value="">Select parent</option>{references.parents.map((item) => <option key={item.id} value={item.id}>{item.name}{item.detail ? ` / ${item.detail}` : ""}</option>)}</select></label>}
+                      {userRoles.includes("student") && <label><span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600"><Link2 className="h-3.5 w-3.5" /> Student record</span><select className="app-select min-h-11" value={linkedStudent} disabled={linking === `student:${user.id}`} onChange={(event) => void linkAccount(user, "student", event.target.value)}><option value="">Select student</option>{references.students.map((item) => <option key={item.id} value={item.id}>{item.name}{item.detail ? ` / ${item.detail}` : ""}</option>)}</select></label>}
+                      {userRoles.includes("staff") && <label><span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600"><Link2 className="h-3.5 w-3.5" /> Staff record</span><select className="app-select min-h-11" value={linkedStaff} disabled={linking === `staff:${user.id}`} onChange={(event) => void linkAccount(user, "staff", event.target.value)}><option value="">Select staff member</option>{references.staff.map((item) => <option key={item.id} value={item.id}>{item.name}{item.detail ? ` / ${item.detail}` : ""}</option>)}</select></label>}
+                    </div>
+                    {userRoles.includes("teacher") && <TeacherScopeEditor user={user} references={references} onChanged={loadAccessData} />}
+                  </article>
+                );
+              })}{!users.length && <div className="app-empty-state"><Users className="mx-auto mb-2 h-6 w-6" />No school users found.</div>}</div>}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

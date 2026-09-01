@@ -3,16 +3,14 @@ import type { AuthUser } from "../domain/roles";
 import { withTransaction } from "../infrastructure/database";
 
 function slugify(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
 export class TenancyService {
   async createSchool(user: AuthUser, input: { name: string; slug?: string; level?: "Primary" | "Secondary" }) {
-    if (user.role !== "admin") throw new AppError(403, "Only administrators can create schools");
+    if (user.role !== "admin" && user.platformRole !== "super_admin") {
+      throw new AppError(403, "Only administrators can create schools");
+    }
     const slug = slugify(input.slug || input.name);
     if (!slug) throw new AppError(400, "A valid school slug is required");
 
@@ -22,10 +20,13 @@ export class TenancyService {
         [input.name.trim(), slug],
       );
       const school = schoolResult.rows[0];
-      await client.query(
-        `insert into school_memberships ("schoolId", "userId", role)
-         values ($1, $2, 'admin')`,
+      const membership = await client.query<{ id: string }>(
+        `insert into school_memberships ("schoolId", "userId", role) values ($1, $2, 'admin') returning id`,
         [school.id, user.id],
+      );
+      await client.query(
+        `insert into school_membership_roles ("membershipId", role, "assignedBy") values ($1, 'admin', $2)`,
+        [membership.rows[0].id, user.id],
       );
       await client.query(
         `insert into school_settings (
@@ -43,9 +44,7 @@ export class TenancyService {
         [school.id, school.name, input.level || "Secondary"],
       );
       await client.query(
-        `insert into grading_policies (
-           "schoolId", name, model, "maxAssessmentScore", "gradeBands"
-         )
+        `insert into grading_policies ("schoolId", name, model, "maxAssessmentScore", "gradeBands")
          select "schoolId", 'Default Competency Policy', 'competency_3', 3, "gradingScale"
          from school_settings where "schoolId" = $1`,
         [school.id],

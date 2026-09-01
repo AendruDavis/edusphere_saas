@@ -143,9 +143,10 @@ sudo certbot --nginx -d your-domain.com -d www.your-domain.com
 
 ```bash
 cd /var/www/edusphere_saas
-git pull
+git pull --ff-only
 npm ci
 npm run build
-npm run migrate:db
-pm2 reload edusphere-saas
+# Run npm run migrate:db only when the release includes database migrations.
+pm2 startOrReload ecosystem.config.cjs --update-env
+curl --fail http://127.0.0.1:3000/api/health
 ```

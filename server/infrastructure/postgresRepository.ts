@@ -30,6 +30,42 @@ export class PostgresRepository {
     return result.rows;
   }
 
+  async listByStudentIds(table: string, schoolId: string, studentIds: string[], studentColumn = "studentId") {
+    if (studentIds.length === 0) return [];
+    const result = await query(
+      `select * from ${tableName(table)}
+       where "schoolId" = $1 and ${quoteIdent(studentColumn)} = any($2::uuid[])
+       order by "createdAt" desc`,
+      [schoolId, studentIds],
+    );
+    return result.rows;
+  }
+
+  async listAttendanceByStudentIds(schoolId: string, studentIds: string[]) {
+    if (studentIds.length === 0) return [];
+    const result = await query(
+      `select * from attendance_records
+       where "schoolId" = $1
+         and ("studentRefId" = any($2::uuid[]) or "studentId" = any($3::text[]))
+       order by "createdAt" desc`,
+      [schoolId, studentIds, studentIds],
+    );
+    return result.rows;
+  }
+
+  async listStudentsBasic(schoolId: string, studentIds: string[] | null, includeBilling = false) {
+    if (studentIds?.length === 0) return [];
+    const billingFields = includeBilling ? ', "feesBalance", "totalFeesPaid", "parentPhone", "parentEmail"' : '';
+    const result = await query(
+      `select id, name, reg, class, section, photo, status, gender, lin, "payCode"${billingFields}
+       from students
+       where "schoolId" = $1 and ($2::uuid[] is null or id = any($2::uuid[]))
+       order by name`,
+      [schoolId, studentIds],
+    );
+    return result.rows;
+  }
+
   async getById(table: string, id: string, schoolId: string) {
     const result = await query(`select * from ${tableName(table)} where id = $1 and "schoolId" = $2 limit 1`, [id, schoolId]);
     return result.rows[0] ?? null;
@@ -89,10 +125,17 @@ export class PostgresRepository {
 
   async listUsers(schoolId: string) {
     const result = await query(
-      `select u.id, u.name, u.email, sm.role, u.photo, u.dept, u."createdAt", u."updatedAt"
+      `select u.id, u.name, u.email, sm.role, u.photo, u.dept, u."createdAt", u."updatedAt",
+         coalesce(array_agg(smr.role order by smr.role) filter (where smr.role is not null), array[sm.role]) as roles,
+         pul."parentId", sul."studentId", stul."staffId"
        from school_memberships sm
        join users u on u.id = sm."userId"
+       left join school_membership_roles smr on smr."membershipId" = sm.id
+       left join parent_user_links pul on pul."schoolId" = sm."schoolId" and pul."userId" = u.id and pul.active = true
+       left join student_user_links sul on sul."schoolId" = sm."schoolId" and sul."userId" = u.id and sul.active = true
+       left join staff_user_links stul on stul."schoolId" = sm."schoolId" and stul."userId" = u.id and stul.active = true
        where sm."schoolId" = $1 and sm.active = true
+       group by u.id, sm.id, pul."parentId", sul."studentId", stul."staffId"
        order by u."createdAt" desc`,
       [schoolId],
     );

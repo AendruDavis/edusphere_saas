@@ -2,8 +2,8 @@ module.exports = {
   apps: [
     {
       name: "edusphere-saas",
-      script: "dist/server.cjs",
-      cwd: "/var/www/edusphere_saas",
+      script: "build/server.cjs",
+      cwd: __dirname,
       instances: 1,
       exec_mode: "fork",
       env: {

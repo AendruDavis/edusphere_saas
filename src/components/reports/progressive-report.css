@@ -33,6 +33,11 @@
   font-weight: 700;
 }
 
+.progressive-report-logo:empty,
+.progressive-report-photo:empty {
+  border-color: transparent;
+}
+
 .progressive-report-photo {
   border-radius: 999px;
 }
@@ -107,7 +112,7 @@
 
 .progressive-status-line {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(30mm, 1fr));
   margin-bottom: 2.5mm;
   border: 1px solid #cbd5e1;
   background: #f8fafc;
@@ -189,6 +194,12 @@
 .progressive-averages {
   background: #f1f5f9 !important;
   font-weight: 900;
+}
+
+.progressive-no-marks {
+  padding: 5mm !important;
+  color: #64748b;
+  text-align: center !important;
 }
 
 .progressive-outcomes {
@@ -277,6 +288,29 @@
 
 .progressive-report-footer span:last-child {
   text-align: right;
+}
+
+.progressive-report-compact {
+  padding: 6mm;
+  font-size: 8px;
+}
+
+.progressive-report-compact .progressive-report-title {
+  margin: 2.5mm 0 2mm;
+}
+
+.progressive-report-compact .progressive-marks-table th,
+.progressive-report-compact .progressive-marks-table td {
+  padding: .8mm .45mm;
+}
+
+.progressive-report-competency .progressive-descriptor {
+  background: color-mix(in srgb, var(--report-secondary) 9%, white);
+  color: #14532d;
+}
+
+.progressive-report-competency .progressive-outcomes {
+  border-top: 2px solid var(--report-secondary);
 }
 
 @media print {

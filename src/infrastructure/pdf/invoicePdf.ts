@@ -20,18 +20,39 @@ function safe(value: string) {
   return value.replace(/[^A-Za-z0-9_-]+/g, "_");
 }
 
-export function exportInvoicePdf(invoice: InvoiceData) {
+async function imageData(url: string | null) {
+  if (!url) return null;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function exportInvoicePdf(invoice: InvoiceData) {
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const primary = hexToRgb(invoice.school.primaryColor);
+  const logo = await imageData(invoice.school.logoUrl);
+  const schoolTextX = logo ? 45 : 15;
+
+  if (logo) doc.addImage(logo, "AUTO", 15, 10, 24, 24, undefined, "FAST");
 
   doc.setTextColor(...primary);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(20);
-  doc.text(invoice.school.name, 15, 20);
+  doc.text(invoice.school.name, schoolTextX, 20, { maxWidth: 110 });
   doc.setTextColor(71, 85, 105);
   doc.setFontSize(8);
-  doc.text(invoice.school.address, 15, 26);
-  doc.text(`TIN: ${invoice.school.tin || "-"}  /  DEO: ${invoice.school.deoCode || "-"}`, 15, 31);
+  doc.text(invoice.school.address, schoolTextX, 26, { maxWidth: 110 });
+  doc.text(`TIN: ${invoice.school.tin || "-"}  /  DEO: ${invoice.school.deoCode || "-"}`, schoolTextX, 31, { maxWidth: 110 });
   doc.setDrawColor(...primary);
   doc.setLineWidth(0.7);
   doc.line(15, 36, 195, 36);

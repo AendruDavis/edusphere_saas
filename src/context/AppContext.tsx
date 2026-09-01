@@ -1,7 +1,9 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { rolesCan, type AppModule, type PermissionAction, type SchoolRole } from "../../shared/permissions";
+import { DEFAULT_REPORT_SETTINGS } from "../../shared/reportSettings";
 import { apiRequest, clearAuthSession, getAccessToken, getActiveSchoolId, setActiveSchoolId, setAuthSession } from "../lib/api";
 import { useToast } from "./ToastContext";
-import {
+import type {
   AppNotification,
   AttendanceRecord,
   Book,
@@ -16,8 +18,8 @@ import {
   Mark,
   Product,
   Route,
-  SchoolSettings,
   SchoolMembership,
+  SchoolSettings,
   Staff,
   Student,
   TimetableEntry,
@@ -32,6 +34,8 @@ interface AppContextType {
   currentUser: User | null;
   schools: SchoolMembership[];
   activeSchoolId: string | null;
+  activeRoles: SchoolRole[];
+  can: (module: AppModule, action?: PermissionAction) => boolean;
   setActiveSchool: (schoolId: string) => Promise<void>;
   students: Student[];
   addStudent: (student: Omit<Student, "id">) => Promise<void>;
@@ -48,14 +52,7 @@ interface AppContextType {
   addHealthRecord: (record: Omit<HealthRecord, "id">) => Promise<void>;
   transactions: Transaction[];
   addTransaction: (record: Omit<Transaction, "id">) => Promise<void>;
-  recordFeePayment: (payment: {
-    studentId: string;
-    amount: number;
-    term: string;
-    year: string;
-    method: string;
-    description?: string;
-  }) => Promise<void>;
+  recordFeePayment: (payment: { studentId: string; amount: number; term: string; year: string; method: string; description?: string }) => Promise<void>;
   books: Book[];
   addBook: (book: Omit<Book, "id">) => Promise<void>;
   updateBook: (id: string, data: Partial<Book>) => Promise<void>;
@@ -113,7 +110,7 @@ interface AppContextType {
   addNotification: (notification: Omit<AppNotification, "id">) => Promise<void>;
   markNotificationRead: (id: string) => Promise<void>;
   login: () => Promise<void>;
-  loginWithCredentials: (email: string, pass: string) => Promise<void>;
+  loginWithCredentials: (email: string, pass: string, schoolSlug?: string) => Promise<void>;
   logout: () => Promise<void>;
   isLoggingIn: boolean;
 }
@@ -142,32 +139,15 @@ type AppSnapshot = {
   notifications: AppNotification[];
 };
 
-type ResourceKey =
-  | "students"
-  | "users"
-  | "borrowings"
-  | "healthRecords"
-  | "books"
-  | "marks"
-  | "products"
-  | "expenses"
-  | "staff"
-  | "leaveRequests"
-  | "feeStructures"
-  | "attendanceRecords"
-  | "vehicles"
-  | "routes"
-  | "timetableEntries"
-  | "dormitories"
-  | "dormRooms"
-  | "dormAllocations"
-  | "notifications";
+type ResourceKey = "students" | "users" | "borrowings" | "healthRecords" | "books" | "marks" | "products" | "expenses" | "staff" | "leaveRequests" | "feeStructures" | "attendanceRecords" | "vehicles" | "routes" | "timetableEntries" | "dormitories" | "dormRooms" | "dormAllocations" | "notifications";
 
 const PRIMARY_CLASSES = ["Baby Class", "Middle Class", "Top Class", "P.1", "P.2", "P.3", "P.4", "P.5", "P.6", "P.7"];
-
 const DEFAULT_SETTINGS: SchoolSettings = {
   name: "EduSphere Academy",
   logo: null,
+  logoVariants: {},
+  brandingVersion: 1,
+  reportSettings: DEFAULT_REPORT_SETTINGS,
   level: "Primary",
   classes: PRIMARY_CLASSES,
   currency: "UGX",
@@ -190,28 +170,18 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 function emptySnapshot(settings = DEFAULT_SETTINGS): AppSnapshot {
   return {
-    schoolSettings: settings,
-    users: [],
-    students: [],
-    staff: [],
-    borrowings: [],
-    healthRecords: [],
-    transactions: [],
-    books: [],
-    marks: [],
-    products: [],
-    expenses: [],
-    leaveRequests: [],
-    feeStructures: [],
-    attendanceRecords: [],
-    vehicles: [],
-    routes: [],
-    timetableEntries: [],
-    dormitories: [],
-    dormRooms: [],
-    dormAllocations: [],
-    notifications: [],
+    schoolSettings: settings, users: [], students: [], staff: [], borrowings: [], healthRecords: [], transactions: [],
+    books: [], marks: [], products: [], expenses: [], leaveRequests: [], feeStructures: [], attendanceRecords: [],
+    vehicles: [], routes: [], timetableEntries: [], dormitories: [], dormRooms: [], dormAllocations: [], notifications: [],
   };
+}
+
+function userForMembership(user: User, membership: SchoolMembership): User {
+  return { ...user, role: membership.role, roles: membership.roles };
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -223,98 +193,105 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const activeMembership = useMemo(
+    () => schools.find((membership) => membership.schoolId === activeSchoolIdState) ?? null,
+    [activeSchoolIdState, schools],
+  );
+  const activeRoles = activeMembership?.roles ?? [];
+  const can = useCallback((module: AppModule, action: PermissionAction = "read") => rolesCan(activeRoles, module, action), [activeRoles]);
+
   const applySnapshot = useCallback((next: Partial<AppSnapshot>) => {
-    setSnapshot({
-      ...emptySnapshot(next.schoolSettings || DEFAULT_SETTINGS),
-      ...next,
-      schoolSettings: next.schoolSettings || DEFAULT_SETTINGS,
-    });
+    const settings = next.schoolSettings || DEFAULT_SETTINGS;
+    setSnapshot({ ...emptySnapshot(settings), ...next, schoolSettings: settings });
   }, []);
 
   const refreshData = useCallback(async () => {
-    const next = await apiRequest<AppSnapshot>("/api/app/snapshot");
-    applySnapshot(next);
+    applySnapshot(await apiRequest<AppSnapshot>("/api/app/snapshot"));
   }, [applySnapshot]);
 
   useEffect(() => {
-    let isMounted = true;
+    const root = document.documentElement;
+    root.style.setProperty("--school-primary", snapshot.schoolSettings.primaryColor || "#0066CC");
+    root.style.setProperty("--school-secondary", snapshot.schoolSettings.secondaryColor || "#009900");
+    document.title = `${snapshot.schoolSettings.name || "EduSphere"} | EduSphere`;
+    const favicon = snapshot.schoolSettings.logoVariants?.favicon;
+    if (favicon) {
+      let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+      if (!link) {
+        link = document.createElement("link");
+        link.rel = "icon";
+        document.head.appendChild(link);
+      }
+      link.href = `${favicon}?v=${snapshot.schoolSettings.brandingVersion || 1}`;
+    }
+  }, [snapshot.schoolSettings]);
 
+  useEffect(() => {
+    let mounted = true;
     async function restoreSession() {
-      const token = getAccessToken();
-      if (!token) {
+      if (!getAccessToken()) {
         setLoading(false);
         return;
       }
-
       try {
         const { user, schools: memberships } = await apiRequest<{ user: User; schools: SchoolMembership[] }>("/api/auth/me");
-        if (!isMounted) return;
+        if (!mounted) return;
         const storedSchoolId = getActiveSchoolId();
-        const activeSchoolId = memberships.some((membership) => membership.schoolId === storedSchoolId)
-          ? storedSchoolId!
-          : memberships[0]?.schoolId;
-        if (!activeSchoolId) throw new Error("This account has no active school membership");
-        setActiveSchoolId(activeSchoolId);
-        setActiveSchoolIdState(activeSchoolId);
+        const membership = memberships.find((entry) => entry.schoolId === storedSchoolId) ?? memberships[0];
+        if (!membership) throw new Error("This account has no active school membership");
+        setActiveSchoolId(membership.schoolId);
+        setActiveSchoolIdState(membership.schoolId);
         setSchools(memberships);
-        setCurrentUser(user);
+        setCurrentUser(userForMembership(user, membership));
         await refreshData();
       } catch (error) {
         console.error("Session restore failed", error);
         clearAuthSession();
-        if (isMounted) {
+        if (mounted) {
           setCurrentUser(null);
           applySnapshot(emptySnapshot());
         }
       } finally {
-        if (isMounted) setLoading(false);
+        if (mounted) setLoading(false);
       }
     }
-
     void restoreSession();
-    return () => {
-      isMounted = false;
-    };
+    return () => { mounted = false; };
   }, [applySnapshot, refreshData]);
 
   const createResource = async <T,>(resource: ResourceKey, payload: T) => {
     await apiRequest(`/api/resources/${resource}`, { method: "POST", json: payload });
     await refreshData();
   };
-
   const updateResource = async <T,>(resource: ResourceKey, id: string, payload: T) => {
     await apiRequest(`/api/resources/${resource}/${id}`, { method: "PATCH", json: payload });
     await refreshData();
   };
-
   const deleteResource = async (resource: ResourceKey, id: string) => {
     await apiRequest(`/api/resources/${resource}/${id}`, { method: "DELETE" });
     await refreshData();
   };
 
-  const login = async () => {
-    toast.info("Google SSO can be added later. Credential login is active for now.");
-  };
-
-  const loginWithCredentials = async (email: string, pass: string) => {
+  const login = async () => { toast.info("Google SSO can be added later. Credential login is active for now."); };
+  const loginWithCredentials = async (email: string, pass: string, schoolSlug?: string) => {
     setIsLoggingIn(true);
     try {
-      const session = await apiRequest<{ accessToken: string; refreshToken?: string; user: User }>("/api/auth/login", {
-        method: "POST",
-        json: { email, pass },
+      const session = await apiRequest<{ accessToken: string; refreshToken?: string; preferredSchoolId?: string | null; user: User }>("/api/auth/login", {
+        method: "POST", json: { email, pass, schoolSlug },
       });
       setAuthSession(session);
       const memberships = await apiRequest<SchoolMembership[]>("/api/me/schools");
-      const activeSchoolId = memberships[0]?.schoolId;
-      if (!activeSchoolId) throw new Error("This account has no active school membership");
-      setActiveSchoolId(activeSchoolId);
-      setActiveSchoolIdState(activeSchoolId);
+      const membership = memberships.find((entry) => entry.schoolId === session.preferredSchoolId) ?? memberships[0];
+      if (!membership) throw new Error("This account has no active school membership");
+      setActiveSchoolId(membership.schoolId);
+      setActiveSchoolIdState(membership.schoolId);
       setSchools(memberships);
-      setCurrentUser(session.user);
+      setCurrentUser(userForMembership(session.user, membership));
       await refreshData();
-    } catch (err: any) {
-      toast.error(err.message || "Credential login failed");
-      throw err;
+    } catch (error) {
+      clearAuthSession();
+      toast.error(errorMessage(error, "Credential login failed"));
+      throw error;
     } finally {
       setIsLoggingIn(false);
     }
@@ -326,157 +303,122 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSchools([]);
     setActiveSchoolIdState(null);
     applySnapshot(emptySnapshot());
+    document.title = "EduSphere";
   };
 
   const setSchoolSettings = async (settings: Partial<SchoolSettings>) => {
-    const nextSettings = {
+    const nextSettings: SchoolSettings = {
       ...snapshot.schoolSettings,
       ...settings,
       currency: settings.currency || snapshot.schoolSettings.currency || "UGX",
       academicYear: settings.academicYear || snapshot.schoolSettings.academicYear || "2026/2027",
-      classFees: {
-        ...(snapshot.schoolSettings.classFees || {}),
-        ...(settings.classFees || {}),
-      },
+      classFees: { ...(snapshot.schoolSettings.classFees || {}), ...(settings.classFees || {}) },
+      reportSettings: settings.reportSettings || snapshot.schoolSettings.reportSettings || DEFAULT_REPORT_SETTINGS,
     };
-
-    await apiRequest<SchoolSettings>("/api/settings/school", {
-      method: "PUT",
-      json: nextSettings,
-    });
+    await apiRequest<SchoolSettings>("/api/settings/school", { method: "PUT", json: nextSettings });
     await refreshData();
   };
 
-  const getClassFees = (className: string) => snapshot.schoolSettings.classFees?.[className] || 0;
-
   const setActiveSchool = async (schoolId: string) => {
-    if (!schools.some((membership) => membership.schoolId === schoolId)) {
-      throw new Error("You do not have access to this school");
-    }
+    const membership = schools.find((entry) => entry.schoolId === schoolId);
+    if (!membership) throw new Error("You do not have access to this school");
     setActiveSchoolId(schoolId);
     setActiveSchoolIdState(schoolId);
+    setCurrentUser((user) => user ? userForMembership(user, membership) : user);
     await refreshData();
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    );
+    return <div className="flex min-h-screen items-center justify-center"><div className="h-12 w-12 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" /></div>;
   }
 
   return (
-    <AppContext.Provider
-      value={{
-        schoolSettings: snapshot.schoolSettings,
-        setSchoolSettings,
-        currentUser,
-        schools,
-        activeSchoolId: activeSchoolIdState,
-        setActiveSchool,
-        students: snapshot.students,
-        addStudent: (student) => createResource("students", student),
-        updateStudent: (id, data) => updateResource("students", id, data),
-        deleteStudent: (id) => deleteResource("students", id),
-        users: snapshot.users,
-        addUser: async (user) => {
-          await apiRequest<User>("/api/users", { method: "POST", json: user });
-          await refreshData();
-        },
-        updateUser: async (id, data) => {
-          await apiRequest<User>(`/api/users/${id}`, { method: "PATCH", json: data });
-          await refreshData();
-        },
-        deleteUser: async (id) => {
-          await apiRequest(`/api/users/${id}`, { method: "DELETE" });
-          await refreshData();
-        },
-        borrowings: snapshot.borrowings,
-        addBorrowing: (record) => createResource("borrowings", record),
-        updateBorrowing: (id, data) => updateResource("borrowings", id, data),
-        healthRecords: snapshot.healthRecords,
-        addHealthRecord: (record) => createResource("healthRecords", record),
-        transactions: snapshot.transactions,
-        addTransaction: async (record) => {
-          await apiRequest<Transaction>("/api/transactions", { method: "POST", json: record });
-          await refreshData();
-        },
-        recordFeePayment: async (payment) => {
-          await apiRequest("/api/fees/pay", { method: "POST", json: payment });
-          await refreshData();
-        },
-        books: snapshot.books,
-        addBook: (book) => createResource("books", book),
-        updateBook: (id, data) => updateResource("books", id, data),
-        deleteBook: (id) => deleteResource("books", id),
-        marks: snapshot.marks,
-        addMark: (mark) => createResource("marks", mark),
-        updateMark: (id, data) => updateResource("marks", id, data),
-        deleteMark: (id) => deleteResource("marks", id),
-        products: snapshot.products,
-        addProduct: (product) => createResource("products", product),
-        updateProduct: (id, data) => updateResource("products", id, data),
-        deleteProduct: (id) => deleteResource("products", id),
-        expenses: snapshot.expenses,
-        addExpense: async (expense) => {
-          await apiRequest<Expense>("/api/expenses", { method: "POST", json: expense });
-          await refreshData();
-        },
-        updateExpense: (id, data) => updateResource("expenses", id, data),
-        deleteExpense: (id) => deleteResource("expenses", id),
-        staff: snapshot.staff,
-        addStaff: (member) => createResource("staff", member),
-        updateStaff: (id, data) => updateResource("staff", id, data),
-        deleteStaff: (id) => deleteResource("staff", id),
-        leaveRequests: snapshot.leaveRequests,
-        addLeaveRequest: (request) => createResource("leaveRequests", request),
-        updateLeaveRequest: (id, data) => updateResource("leaveRequests", id, data),
-        attendanceRecords: snapshot.attendanceRecords,
-        addAttendanceRecord: async (record) => {
-          await apiRequest<AttendanceRecord>("/api/attendance", { method: "POST", json: record });
-          await refreshData();
-        },
-        recordAttendanceEvent: async (event) => {
-          await apiRequest<AttendanceRecord>("/api/attendance/manual", { method: "POST", json: event });
-          await refreshData();
-        },
-        feeStructures: snapshot.feeStructures,
-        addFeeStructure: (fee) => createResource("feeStructures", fee),
-        updateFeeStructure: (id, data) => updateResource("feeStructures", id, data),
-        vehicles: snapshot.vehicles,
-        addVehicle: (vehicle) => createResource("vehicles", vehicle),
-        updateVehicle: (id, data) => updateResource("vehicles", id, data),
-        deleteVehicle: (id) => deleteResource("vehicles", id),
-        routes: snapshot.routes,
-        addRoute: (route) => createResource("routes", route),
-        updateRoute: (id, data) => updateResource("routes", id, data),
-        deleteRoute: (id) => deleteResource("routes", id),
-        timetableEntries: snapshot.timetableEntries,
-        getClassFees,
-        addTimetableEntry: (entry) => createResource("timetableEntries", entry),
-        updateTimetableEntry: (id, data) => updateResource("timetableEntries", id, data),
-        deleteTimetableEntry: (id) => deleteResource("timetableEntries", id),
-        dormitories: snapshot.dormitories,
-        addDormitory: (dorm) => createResource("dormitories", dorm),
-        updateDormitory: (id, data) => updateResource("dormitories", id, data),
-        deleteDormitory: (id) => deleteResource("dormitories", id),
-        dormRooms: snapshot.dormRooms,
-        addDormRoom: (room) => createResource("dormRooms", room),
-        updateDormRoom: (id, data) => updateResource("dormRooms", id, data),
-        deleteDormRoom: (id) => deleteResource("dormRooms", id),
-        dormAllocations: snapshot.dormAllocations,
-        allocateDorm: (allocation) => createResource("dormAllocations", allocation),
-        updateAllocation: (id, data) => updateResource("dormAllocations", id, data),
-        notifications: snapshot.notifications,
-        addNotification: (notification) => createResource("notifications", notification),
-        markNotificationRead: (id) => updateResource("notifications", id, { read: true }),
-        login,
-        loginWithCredentials,
-        logout,
-        isLoggingIn,
-      }}
-    >
+    <AppContext.Provider value={{
+      schoolSettings: snapshot.schoolSettings,
+      setSchoolSettings,
+      currentUser,
+      schools,
+      activeSchoolId: activeSchoolIdState,
+      activeRoles,
+      can,
+      setActiveSchool,
+      students: snapshot.students,
+      addStudent: (student) => createResource("students", student),
+      updateStudent: (id, data) => updateResource("students", id, data),
+      deleteStudent: (id) => deleteResource("students", id),
+      users: snapshot.users,
+      addUser: async (user) => { await apiRequest<User>("/api/users", { method: "POST", json: user }); await refreshData(); },
+      updateUser: async (id, data) => { await apiRequest<User>(`/api/users/${id}`, { method: "PATCH", json: data }); await refreshData(); },
+      deleteUser: async (id) => { await apiRequest(`/api/users/${id}`, { method: "DELETE" }); await refreshData(); },
+      borrowings: snapshot.borrowings,
+      addBorrowing: (record) => createResource("borrowings", record),
+      updateBorrowing: (id, data) => updateResource("borrowings", id, data),
+      healthRecords: snapshot.healthRecords,
+      addHealthRecord: (record) => createResource("healthRecords", record),
+      transactions: snapshot.transactions,
+      addTransaction: async (record) => { await apiRequest<Transaction>("/api/transactions", { method: "POST", json: record }); await refreshData(); },
+      recordFeePayment: async (payment) => { await apiRequest("/api/fees/pay", { method: "POST", json: payment }); await refreshData(); },
+      books: snapshot.books,
+      addBook: (book) => createResource("books", book),
+      updateBook: (id, data) => updateResource("books", id, data),
+      deleteBook: (id) => deleteResource("books", id),
+      marks: snapshot.marks,
+      addMark: (mark) => createResource("marks", mark),
+      updateMark: (id, data) => updateResource("marks", id, data),
+      deleteMark: (id) => deleteResource("marks", id),
+      products: snapshot.products,
+      addProduct: (product) => createResource("products", product),
+      updateProduct: (id, data) => updateResource("products", id, data),
+      deleteProduct: (id) => deleteResource("products", id),
+      expenses: snapshot.expenses,
+      addExpense: async (expense) => { await apiRequest<Expense>("/api/expenses", { method: "POST", json: expense }); await refreshData(); },
+      updateExpense: (id, data) => updateResource("expenses", id, data),
+      deleteExpense: (id) => deleteResource("expenses", id),
+      staff: snapshot.staff,
+      addStaff: (member) => createResource("staff", member),
+      updateStaff: (id, data) => updateResource("staff", id, data),
+      deleteStaff: (id) => deleteResource("staff", id),
+      leaveRequests: snapshot.leaveRequests,
+      addLeaveRequest: (request) => createResource("leaveRequests", request),
+      updateLeaveRequest: (id, data) => updateResource("leaveRequests", id, data),
+      attendanceRecords: snapshot.attendanceRecords,
+      addAttendanceRecord: async (record) => { await apiRequest<AttendanceRecord>("/api/attendance", { method: "POST", json: record }); await refreshData(); },
+      recordAttendanceEvent: async (event) => { await apiRequest<AttendanceRecord>("/api/attendance/manual", { method: "POST", json: event }); await refreshData(); },
+      feeStructures: snapshot.feeStructures,
+      addFeeStructure: (fee) => createResource("feeStructures", fee),
+      updateFeeStructure: (id, data) => updateResource("feeStructures", id, data),
+      vehicles: snapshot.vehicles,
+      addVehicle: (vehicle) => createResource("vehicles", vehicle),
+      updateVehicle: (id, data) => updateResource("vehicles", id, data),
+      deleteVehicle: (id) => deleteResource("vehicles", id),
+      routes: snapshot.routes,
+      addRoute: (route) => createResource("routes", route),
+      updateRoute: (id, data) => updateResource("routes", id, data),
+      deleteRoute: (id) => deleteResource("routes", id),
+      timetableEntries: snapshot.timetableEntries,
+      getClassFees: (className) => snapshot.schoolSettings.classFees?.[className] || 0,
+      addTimetableEntry: (entry) => createResource("timetableEntries", entry),
+      updateTimetableEntry: (id, data) => updateResource("timetableEntries", id, data),
+      deleteTimetableEntry: (id) => deleteResource("timetableEntries", id),
+      dormitories: snapshot.dormitories,
+      addDormitory: (dorm) => createResource("dormitories", dorm),
+      updateDormitory: (id, data) => updateResource("dormitories", id, data),
+      deleteDormitory: (id) => deleteResource("dormitories", id),
+      dormRooms: snapshot.dormRooms,
+      addDormRoom: (room) => createResource("dormRooms", room),
+      updateDormRoom: (id, data) => updateResource("dormRooms", id, data),
+      deleteDormRoom: (id) => deleteResource("dormRooms", id),
+      dormAllocations: snapshot.dormAllocations,
+      allocateDorm: (allocation) => createResource("dormAllocations", allocation),
+      updateAllocation: (id, data) => updateResource("dormAllocations", id, data),
+      notifications: snapshot.notifications,
+      addNotification: (notification) => createResource("notifications", notification),
+      markNotificationRead: (id) => updateResource("notifications", id, { read: true }),
+      login,
+      loginWithCredentials,
+      logout,
+      isLoggingIn,
+    }}>
       {children}
     </AppContext.Provider>
   );
@@ -484,8 +426,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
 export function useApp() {
   const context = useContext(AppContext);
-  if (context === undefined) {
-    throw new Error("useApp must be used within an AppProvider");
-  }
+  if (!context) throw new Error("useApp must be used within an AppProvider");
   return context;
 }
