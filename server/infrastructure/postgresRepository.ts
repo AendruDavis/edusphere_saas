@@ -24,6 +24,23 @@ function preparePayload<T extends RecordData>(payload: T) {
   return cleanUndefined(payload);
 }
 
+const SCHOOL_SETTINGS_JSON_FIELDS = new Set<string>([
+  "classes",
+  "classFees",
+  "gradingScale",
+  "notificationSettings",
+  "logoVariants",
+  "reportSettings",
+]);
+
+function isSchoolSettingsJsonField(key: string) {
+  return SCHOOL_SETTINGS_JSON_FIELDS.has(key);
+}
+
+export function serializeSchoolSettingsValue(key: string, value: unknown) {
+  return isSchoolSettingsJsonField(key) ? JSON.stringify(value) : value;
+}
+
 export class PostgresRepository {
   async list(table: string, schoolId: string) {
     const result = await query(`select * from ${tableName(table)} where "schoolId" = $1 order by "createdAt" desc`, [schoolId]);
@@ -105,12 +122,14 @@ export class PostgresRepository {
     const clean = preparePayload({ id: true, ...payload, schoolId, updatedAt: new Date().toISOString() });
     const keys = Object.keys(clean);
     const columns = keys.map(quoteIdent).join(", ");
-    const placeholders = keys.map((_, index) => `$${index + 1}`).join(", ");
+    const placeholders = keys
+      .map((key, index) => `$${index + 1}${isSchoolSettingsJsonField(key) ? "::jsonb" : ""}`)
+      .join(", ");
     const updates = keys
       .filter((key) => key !== "schoolId")
       .map((key) => `${quoteIdent(key)} = excluded.${quoteIdent(key)}`)
       .join(", ");
-    const values = keys.map((key) => clean[key]);
+    const values = keys.map((key) => serializeSchoolSettingsValue(key, clean[key]));
     const result = await query(
       `insert into "school_settings" (${columns}) values (${placeholders}) on conflict ("schoolId") do update set ${updates} returning *`,
       values,
