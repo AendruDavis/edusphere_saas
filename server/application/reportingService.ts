@@ -201,7 +201,27 @@ export class ReportingService {
            (select at."opensOn" from academic_terms at join academic_years ay on ay.id = at."academicYearId"
             where at."schoolId" = $1 and at.name = $3 and ay.name = $4 limit 1) as "termOpensOn",
            (select at."closesOn" from academic_terms at join academic_years ay on ay.id = at."academicYearId"
-            where at."schoolId" = $1 and at.name = $3 and ay.name = $4 limit 1) as "termClosesOn"`,
+             where at."schoolId" = $1 and at.name = $3 and ay.name = $4 limit 1) as "termClosesOn",
+           greatest(
+             coalesce((
+               select fs."totalAmount"
+               from students fee_student
+               join fee_structures fs on fs."schoolId" = fee_student."schoolId"
+                 and lower(trim(fs."className")) = lower(trim(fee_student.class))
+                 and lower(trim(fs.term)) = lower(trim($3))
+                 and lower(trim(fs."academicYear")) = lower(trim($4))
+                 and fs.active = true
+               where fee_student."schoolId" = $1 and fee_student.id = $2::uuid
+               limit 1
+             ), 0) - coalesce((
+               select sum(fp.amount)
+               from fee_payments fp
+               where fp."schoolId" = $1 and fp."studentId" = $2::uuid
+                 and lower(trim(fp.term)) = lower(trim($3))
+                 and lower(trim(fp.year)) = lower(trim($4))
+             ), 0),
+             0
+           ) as "feesBalance"`,
         [tenant.schoolId, request.studentId, request.termName, request.yearName],
       ),
       query(
@@ -307,7 +327,7 @@ export class ReportingService {
       statusSummary: {
         daysAttended: numeric(status.daysAttended),
         expectedSchoolDays: numeric(status.expectedSchoolDays),
-        feesBalance: numeric(student.feesBalance),
+        feesBalance: numeric(status.feesBalance),
         sicknessStatus: String(status.sicknessStatus ?? "Cleared"),
         lastSickbayVisit: status.lastSickbayVisit ? String(status.lastSickbayVisit) : null,
         booksBorrowed: numeric(status.booksBorrowed),

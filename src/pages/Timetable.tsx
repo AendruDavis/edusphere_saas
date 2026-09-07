@@ -22,7 +22,7 @@ import { ResponsiveDialog } from "../components/ui/ResponsiveDialog";
 import { FormGrid, HorizontalScroller, SegmentedTabs } from "../components/ui/ResponsivePrimitives";
 
 export default function Timetable() {
-  const { timetableEntries, schoolSettings, staff, addTimetableEntry, updateTimetableEntry, deleteTimetableEntry } = useApp();
+  const { timetableEntries, schoolSettings, subjects: subjectRecords, staff, addTimetableEntry, updateTimetableEntry, deleteTimetableEntry } = useApp();
   const [activeTab, setActiveTab] = useState<"class" | "teacher" | "exam">("class");
   const [selectedClass, setSelectedClass] = useState(schoolSettings.classes[0] || "");
   const [selectedTeacher, setSelectedTeacher] = useState("");
@@ -44,7 +44,10 @@ export default function Timetable() {
     "03:30 - 04:30"
   ];
 
-  const subjects = ["Mathematics", "English", "Science", "Social Studies", "Religious Education", "Swahili", "Art & Craft", "Physical Education"];
+  const subjects = Array.from(new Set([
+    ...subjectRecords.filter((subject) => subject.active).map((subject) => subject.name),
+    ...timetableEntries.map((entry) => entry.subject),
+  ])).sort();
 
   const handleOpenModal = (day?: string, time?: string) => {
     if (day && time) {

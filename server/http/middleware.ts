@@ -21,6 +21,9 @@ declare global {
 export function requireTenant(authService = new AuthService()): RequestHandler {
   return asyncHandler(async (req, _res, next) => {
     if (!req.currentUser) throw new AppError(401, "Authentication is required");
+    if (req.currentUser.mustChangePassword) {
+      throw new AppError(403, "Password change required", { code: "password_change_required" });
+    }
     const schoolId = req.header("x-school-id");
     if (!schoolId) throw new AppError(400, "Missing X-School-Id header");
     req.tenant = await authService.resolveTenant(req.currentUser.id, schoolId);

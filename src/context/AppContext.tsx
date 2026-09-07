@@ -5,6 +5,7 @@ import { apiRequest, clearAuthSession, getAccessToken, getActiveSchoolId, setAct
 import { useToast } from "./ToastContext";
 import type {
   AppNotification,
+  AccountProvisioningResult,
   AttendanceRecord,
   Book,
   BorrowingRecord,
@@ -13,6 +14,8 @@ import type {
   DormRoom,
   Expense,
   FeeStructure,
+  FeeBalance,
+  FeePeriod,
   HealthRecord,
   LeaveRequest,
   Mark,
@@ -22,6 +25,7 @@ import type {
   SchoolSettings,
   Staff,
   Student,
+  Subject,
   TimetableEntry,
   Transaction,
   User,
@@ -42,9 +46,15 @@ interface AppContextType {
   updateStudent: (id: string, data: Partial<Student>) => Promise<void>;
   deleteStudent: (id: string) => Promise<void>;
   users: User[];
-  addUser: (user: Omit<User, "id">) => Promise<void>;
+  addUser: (user: { name: string; email: string; roles: SchoolRole[]; dept?: string; photo?: string | null; confirmPassword?: string }) => Promise<AccountProvisioningResult>;
   updateUser: (id: string, data: Partial<User>) => Promise<void>;
-  deleteUser: (id: string) => Promise<void>;
+  updateUserRoles: (id: string, roles: SchoolRole[], confirmPassword?: string) => Promise<void>;
+  resetUserPassword: (id: string, confirmPassword: string) => Promise<AccountProvisioningResult>;
+  deleteUser: (id: string, confirmPassword?: string) => Promise<void>;
+  subjects: Subject[];
+  addSubject: (subject: Omit<Subject, "id" | "active"> & { active?: boolean }) => Promise<void>;
+  updateSubject: (id: string, subject: Partial<Subject>) => Promise<void>;
+  deactivateSubject: (id: string) => Promise<void>;
   borrowings: BorrowingRecord[];
   addBorrowing: (record: Omit<BorrowingRecord, "id">) => Promise<void>;
   updateBorrowing: (id: string, data: Partial<BorrowingRecord>) => Promise<void>;
@@ -52,7 +62,7 @@ interface AppContextType {
   addHealthRecord: (record: Omit<HealthRecord, "id">) => Promise<void>;
   transactions: Transaction[];
   addTransaction: (record: Omit<Transaction, "id">) => Promise<void>;
-  recordFeePayment: (payment: { studentId: string; amount: number; term: string; year: string; method: string; description?: string }) => Promise<void>;
+  recordFeePayment: (payment: { studentId: string; amount: number; term: string; year: string; method: string; paidAt?: string; description?: string }) => Promise<void>;
   books: Book[];
   addBook: (book: Omit<Book, "id">) => Promise<void>;
   updateBook: (id: string, data: Partial<Book>) => Promise<void>;
@@ -82,6 +92,11 @@ interface AppContextType {
   feeStructures: FeeStructure[];
   addFeeStructure: (fee: Omit<FeeStructure, "id">) => Promise<void>;
   updateFeeStructure: (id: string, data: Partial<FeeStructure>) => Promise<void>;
+  deactivateFeeStructure: (id: string) => Promise<void>;
+  feeBalances: FeeBalance[];
+  feePeriod: FeePeriod;
+  refreshFeeBalances: (period?: Partial<FeePeriod> & { className?: string }) => Promise<void>;
+  getStudentFeeBalance: (studentId: string) => FeeBalance | undefined;
   vehicles: Vehicle[];
   addVehicle: (vehicle: Omit<Vehicle, "id">) => Promise<void>;
   updateVehicle: (id: string, data: Partial<Vehicle>) => Promise<void>;
@@ -111,6 +126,7 @@ interface AppContextType {
   markNotificationRead: (id: string) => Promise<void>;
   login: () => Promise<void>;
   loginWithCredentials: (email: string, pass: string, schoolSlug?: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string, confirmPassword: string) => Promise<void>;
   logout: () => Promise<void>;
   isLoggingIn: boolean;
 }
@@ -129,6 +145,9 @@ type AppSnapshot = {
   expenses: Expense[];
   leaveRequests: LeaveRequest[];
   feeStructures: FeeStructure[];
+  feeBalances: FeeBalance[];
+  feePeriod: FeePeriod;
+  subjects: Subject[];
   attendanceRecords: AttendanceRecord[];
   vehicles: Vehicle[];
   routes: Route[];
@@ -152,6 +171,7 @@ const DEFAULT_SETTINGS: SchoolSettings = {
   classes: PRIMARY_CLASSES,
   currency: "UGX",
   academicYear: "2026/2027",
+  currentTerm: "Term 1",
   classFees: {},
   gradingScale: [
     { min: 80, grade: "D1", comment: "Distinction 1" },
@@ -171,7 +191,8 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 function emptySnapshot(settings = DEFAULT_SETTINGS): AppSnapshot {
   return {
     schoolSettings: settings, users: [], students: [], staff: [], borrowings: [], healthRecords: [], transactions: [],
-    books: [], marks: [], products: [], expenses: [], leaveRequests: [], feeStructures: [], attendanceRecords: [],
+    books: [], marks: [], products: [], expenses: [], leaveRequests: [], feeStructures: [], feeBalances: [],
+    feePeriod: { term: settings.currentTerm || "Term 1", year: settings.academicYear || "2026/2027" }, subjects: [], attendanceRecords: [],
     vehicles: [], routes: [], timetableEntries: [], dormitories: [], dormRooms: [], dormAllocations: [], notifications: [],
   };
 }
@@ -243,7 +264,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setActiveSchoolIdState(membership.schoolId);
         setSchools(memberships);
         setCurrentUser(userForMembership(user, membership));
-        await refreshData();
+        if (!user.mustChangePassword) await refreshData();
       } catch (error) {
         console.error("Session restore failed", error);
         clearAuthSession();
@@ -287,7 +308,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setActiveSchoolIdState(membership.schoolId);
       setSchools(memberships);
       setCurrentUser(userForMembership(session.user, membership));
-      await refreshData();
+      if (!session.user.mustChangePassword) await refreshData();
     } catch (error) {
       clearAuthSession();
       toast.error(errorMessage(error, "Credential login failed"));
@@ -312,11 +333,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ...settings,
       currency: settings.currency || snapshot.schoolSettings.currency || "UGX",
       academicYear: settings.academicYear || snapshot.schoolSettings.academicYear || "2026/2027",
+      currentTerm: settings.currentTerm || snapshot.schoolSettings.currentTerm || "Term 1",
       classFees: { ...(snapshot.schoolSettings.classFees || {}), ...(settings.classFees || {}) },
       reportSettings: settings.reportSettings || snapshot.schoolSettings.reportSettings || DEFAULT_REPORT_SETTINGS,
     };
     await apiRequest<SchoolSettings>("/api/settings/school", { method: "PUT", json: nextSettings });
+    const auth = await apiRequest<{ user: User; schools: SchoolMembership[] }>("/api/auth/me");
+    const membership = auth.schools.find((entry) => entry.schoolId === activeSchoolIdState) ?? auth.schools[0];
+    setSchools(auth.schools);
+    if (membership) setCurrentUser(userForMembership(auth.user, membership));
     await refreshData();
+  };
+
+  const changePassword = async (currentPassword: string, newPassword: string, confirmPassword: string) => {
+    const session = await apiRequest<{ accessToken: string; refreshToken: string; user: User }>("/api/auth/change-password", {
+      method: "POST",
+      json: { currentPassword, newPassword, confirmPassword },
+    });
+    setAuthSession(session);
+    const membership = schools.find((entry) => entry.schoolId === activeSchoolIdState) ?? schools[0];
+    setCurrentUser(membership ? userForMembership(session.user, membership) : session.user);
+    await refreshData();
+  };
+
+  const refreshFeeBalances = async (period: Partial<FeePeriod> & { className?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (period.term) params.set("term", period.term);
+    if (period.year) params.set("year", period.year);
+    if (period.className) params.set("className", period.className);
+    const result = await apiRequest<{ term: string; year: string; balances: FeeBalance[] }>(`/api/fees/balances?${params}`);
+    setSnapshot((current) => ({ ...current, feeBalances: result.balances, feePeriod: { term: result.term, year: result.year } }));
   };
 
   const setActiveSchool = async (schoolId: string) => {
@@ -347,9 +393,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updateStudent: (id, data) => updateResource("students", id, data),
       deleteStudent: (id) => deleteResource("students", id),
       users: snapshot.users,
-      addUser: async (user) => { await apiRequest<User>("/api/users", { method: "POST", json: user }); await refreshData(); },
+      addUser: async (user) => { const created = await apiRequest<AccountProvisioningResult>("/api/users", { method: "POST", json: user }); await refreshData(); return created; },
       updateUser: async (id, data) => { await apiRequest<User>(`/api/users/${id}`, { method: "PATCH", json: data }); await refreshData(); },
-      deleteUser: async (id) => { await apiRequest(`/api/users/${id}`, { method: "DELETE" }); await refreshData(); },
+      updateUserRoles: async (id, roles, confirmPassword) => { await apiRequest(`/api/users/${id}/roles`, { method: "PUT", json: { roles, confirmPassword } }); await refreshData(); },
+      resetUserPassword: async (id, confirmPassword) => { const result = await apiRequest<AccountProvisioningResult>(`/api/users/${id}/reset-password`, { method: "POST", json: { confirmPassword } }); await refreshData(); return result; },
+      deleteUser: async (id, confirmPassword) => { await apiRequest(`/api/users/${id}`, { method: "DELETE", json: { confirmPassword } }); await refreshData(); },
+      subjects: snapshot.subjects,
+      addSubject: async (subject) => { await apiRequest("/api/subjects", { method: "POST", json: subject }); await refreshData(); },
+      updateSubject: async (id, subject) => { await apiRequest(`/api/subjects/${id}`, { method: "PUT", json: subject }); await refreshData(); },
+      deactivateSubject: async (id) => { await apiRequest(`/api/subjects/${id}`, { method: "DELETE" }); await refreshData(); },
       borrowings: snapshot.borrowings,
       addBorrowing: (record) => createResource("borrowings", record),
       updateBorrowing: (id, data) => updateResource("borrowings", id, data),
@@ -385,8 +437,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addAttendanceRecord: async (record) => { await apiRequest<AttendanceRecord>("/api/attendance", { method: "POST", json: record }); await refreshData(); },
       recordAttendanceEvent: async (event) => { await apiRequest<AttendanceRecord>("/api/attendance/manual", { method: "POST", json: event }); await refreshData(); },
       feeStructures: snapshot.feeStructures,
-      addFeeStructure: (fee) => createResource("feeStructures", fee),
-      updateFeeStructure: (id, data) => updateResource("feeStructures", id, data),
+      addFeeStructure: async (fee) => { await apiRequest("/api/fee-structures", { method: "POST", json: fee }); await refreshData(); },
+      updateFeeStructure: async (id, data) => { await apiRequest(`/api/fee-structures/${id}`, { method: "PUT", json: data }); await refreshData(); },
+      deactivateFeeStructure: async (id) => { await apiRequest(`/api/fee-structures/${id}`, { method: "DELETE" }); await refreshData(); },
+      feeBalances: snapshot.feeBalances,
+      feePeriod: snapshot.feePeriod,
+      refreshFeeBalances,
+      getStudentFeeBalance: (studentId) => snapshot.feeBalances.find((balance) => balance.studentId === studentId),
       vehicles: snapshot.vehicles,
       addVehicle: (vehicle) => createResource("vehicles", vehicle),
       updateVehicle: (id, data) => updateResource("vehicles", id, data),
@@ -396,7 +453,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updateRoute: (id, data) => updateResource("routes", id, data),
       deleteRoute: (id) => deleteResource("routes", id),
       timetableEntries: snapshot.timetableEntries,
-      getClassFees: (className) => snapshot.schoolSettings.classFees?.[className] || 0,
+      getClassFees: (className) => snapshot.feeStructures.find((fee) =>
+        fee.active !== false && fee.className === className && fee.term === snapshot.feePeriod.term && fee.academicYear === snapshot.feePeriod.year
+      )?.totalAmount || 0,
       addTimetableEntry: (entry) => createResource("timetableEntries", entry),
       updateTimetableEntry: (id, data) => updateResource("timetableEntries", id, data),
       deleteTimetableEntry: (id) => deleteResource("timetableEntries", id),
@@ -416,6 +475,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       markNotificationRead: (id) => updateResource("notifications", id, { read: true }),
       login,
       loginWithCredentials,
+      changePassword,
       logout,
       isLoggingIn,
     }}>

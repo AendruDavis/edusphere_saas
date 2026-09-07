@@ -21,16 +21,21 @@ import { useApp } from "../context/AppContext";
 import { Link } from "react-router-dom";
 import { SegmentedTabs } from "../components/ui/ResponsivePrimitives";
 import { ResponsiveDialog } from "../components/ui/ResponsiveDialog";
+import { AccountDialog } from "../components/accounts/AccountDialog";
+import type { User } from "../types";
+import { useToast } from "../context/ToastContext";
 
 export default function Staff() {
-  const { users, addUser, updateUser, deleteUser, staff, addStaff, updateStaff, deleteStaff, leaveRequests, addLeaveRequest, updateLeaveRequest, schoolSettings } = useApp();
+  const { users, deleteUser, staff, addStaff, updateStaff, deleteStaff, leaveRequests, addLeaveRequest, updateLeaveRequest, schoolSettings } = useApp();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<"users" | "staff" | "leaves">("users");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRole, setSelectedRole] = useState("All");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<any>(null);
-  const [formData, setFormData] = useState({ name: "", email: "", role: "teacher", dept: "", password: "password123" });
+  const [accountDialogOpen, setAccountDialogOpen] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<User | null>(null);
   const [staffFormData, setStaffFormData] = useState({
     name: "",
     employeeId: "",
@@ -83,42 +88,33 @@ export default function Staff() {
     }
     setIsModalOpen(false);
     setEditingStaff(null);
-    setFormData({ name: "", email: "", role: "teacher", dept: "", password: "password123" });
   };
 
-  const facultyCount = users.filter(u => u.role === "teacher").length;
-  const adminCount = users.filter(u => u.role === "admin").length;
-  const accountantCount = users.filter(u => u.role === "accountant").length;
-  const librarianCount = users.filter(u => u.role === "librarian").length;
-  const nurseCount = users.filter(u => u.role === "nurse").length;
+  const hasRole = (user: User, role: string) => user.roles?.includes(role as never) || user.role === role;
+  const facultyCount = users.filter((user) => hasRole(user, "teacher")).length;
+  const adminCount = users.filter((user) => hasRole(user, "admin")).length;
+  const accountantCount = users.filter((user) => hasRole(user, "accountant")).length;
+  const librarianCount = users.filter((user) => hasRole(user, "librarian")).length;
+  const nurseCount = users.filter((user) => hasRole(user, "nurse")).length;
 
-  const handleEdit = (s: any) => {
-    setEditingStaff(s);
-    setFormData({ name: s.name, email: s.email, role: s.role, dept: s.dept || "", password: "" });
-    setIsModalOpen(true);
+  const handleEdit = (account: User) => {
+    setEditingAccount(account);
+    setAccountDialogOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (account: User) => {
+    if (hasRole(account, "admin")) {
+      toast.info("Remove the administrator role in Edit Account before removing school access.");
+      return;
+    }
     if (confirm("Are you sure you want to remove this staff member?")) {
-      await deleteUser(id);
+      try {
+        await deleteUser(account.id);
+        toast.success("School access removed.");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Unable to remove school access");
+      }
     }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const payload: any = { ...formData };
-    if (editingStaff && !payload.password) {
-      delete payload.password;
-    }
-
-    if (editingStaff) {
-      await updateUser(editingStaff.id, payload);
-    } else {
-      await addUser(payload);
-    }
-    setIsModalOpen(false);
-    setEditingStaff(null);
-    setFormData({ name: "", email: "", role: "teacher", dept: "", password: "password123" });
   };
 
   return (
@@ -137,11 +133,11 @@ export default function Staff() {
           </Link>
           {activeTab === "users" && (
             <button 
-              onClick={() => { setEditingStaff(null); setFormData({ name: "", email: "", role: "teacher", dept: "", password: "password123" }); setIsModalOpen(true); }}
+              onClick={() => { setEditingAccount(null); setAccountDialogOpen(true); }}
               className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 shadow-sm transition-all"
             >
               <Plus className="w-4 h-4" />
-              Add Admin/Teacher
+              Add login account
             </button>
           )}
           {activeTab === "staff" && (
@@ -242,7 +238,7 @@ export default function Staff() {
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     <button type="button" onClick={() => handleEdit(account)} className="app-button-secondary">Edit</button>
-                    <button type="button" onClick={() => handleDelete(account.id)} className="app-button-secondary text-rose-700 hover:bg-rose-50">Remove</button>
+                    <button type="button" onClick={() => handleDelete(account)} className="app-button-secondary text-rose-700 hover:bg-rose-50">Remove</button>
                   </div>
                 </article>
               ))}
@@ -287,7 +283,7 @@ export default function Staff() {
                       </td>
                       <td className="px-6 py-4 text-right flex justify-end gap-2">
                         <button onClick={() => handleEdit(s)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><Mail className="w-4 h-4" /></button>
-                        <button onClick={() => handleDelete(s.id)} className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"><X className="w-4 h-4" /></button>
+                         <button onClick={() => handleDelete(s)} className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg" aria-label={`Remove ${s.name}`}><X className="w-4 h-4" /></button>
                       </td>
                     </tr>
                   ))}
@@ -517,9 +513,9 @@ export default function Staff() {
 
       {/* Main Modal (User or Staff HR) */}
       <ResponsiveDialog
-        open={isModalOpen}
-        title={`${editingStaff ? "Update" : "New"} ${activeTab === "users" ? "Login Account" : "HR Record"}`}
-        description={activeTab === "users" ? "Manage system access and the user's assigned role." : "Manage the employee's work and payroll details."}
+        open={isModalOpen && activeTab !== "users"}
+        title={`${editingStaff ? "Update" : "New"} HR Record`}
+        description="Manage the employee's work and payroll details."
         onClose={() => setIsModalOpen(false)}
         maxWidth="max-w-lg"
         footer={
@@ -529,36 +525,7 @@ export default function Staff() {
           </>
         }
       >
-            <form id="staff-form" onSubmit={activeTab === "users" ? handleSubmit : handleStaffSubmit} className="space-y-4">
-              {activeTab === "users" ? (
-                <>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-gray-700">Full Name</label>
-                    <input type="text" required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-gray-700">Email Address</label>
-                    <input type="email" required value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-gray-700">Access Password</label>
-                    <input type="text" required={!editingStaff} value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none font-mono" />
-                    <p className="text-[10px] text-gray-400 mt-1 italic">{editingStaff ? "Leave blank to keep the existing password." : "Provide this password to the staff member for login."}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-gray-700">Role</label>
-                    <select value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value })} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none font-bold">
-                      <option value="admin">Admin</option>
-                      <option value="teacher">Teacher</option>
-                      <option value="accountant">Accountant</option>
-                      <option value="librarian">Librarian</option>
-                      <option value="nurse">Nurse</option>
-                    </select>
-                    <p className="text-[10px] text-gray-400 mt-1 italic">Admins can manage settings, users, and financial data.</p>
-                  </div>
-                </>
-              ) : (
-                <>
+            <form id="staff-form" onSubmit={handleStaffSubmit} className="space-y-4">
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase text-gray-400">Employee Name</label>
@@ -593,10 +560,14 @@ export default function Staff() {
                       </select>
                     </div>
                   </div>
-                </>
-              )}
             </form>
       </ResponsiveDialog>
+
+      <AccountDialog
+        open={accountDialogOpen}
+        account={editingAccount}
+        onClose={() => { setAccountDialogOpen(false); setEditingAccount(null); }}
+      />
     </div>
   );
 }

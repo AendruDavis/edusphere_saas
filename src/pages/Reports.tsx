@@ -20,7 +20,7 @@ import { exportInvoicePdf } from "../infrastructure/pdf/invoicePdf";
 import { exportProgressiveReportPdf } from "../infrastructure/pdf/progressiveReportPdf";
 import { apiRequest } from "../lib/api";
 import { cn, formatCurrency } from "../lib/utils";
-import type { Student } from "../types";
+import type { FeeBalance, Student } from "../types";
 
 type ReportType = "report-card" | "invoice";
 
@@ -30,7 +30,7 @@ export default function Reports() {
   const [reportType, setReportType] = React.useState<ReportType>("report-card");
   const [selectedStudent, setSelectedStudent] = React.useState<Student | null>(null);
   const [searchQuery, setSearchQuery] = React.useState("");
-  const [selectedTerm, setSelectedTerm] = React.useState("Term 1");
+  const [selectedTerm, setSelectedTerm] = React.useState(schoolSettings.currentTerm || "Term 1");
   const [selectedYear, setSelectedYear] = React.useState(schoolSettings.academicYear || "2026/2027");
   const [report, setReport] = React.useState<ProgressiveReportData | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -38,6 +38,8 @@ export default function Reports() {
   const [exporting, setExporting] = React.useState(false);
   const [correctionMode, setCorrectionMode] = React.useState(false);
   const [correctionReason, setCorrectionReason] = React.useState("");
+  const [invoiceBalance, setInvoiceBalance] = React.useState<FeeBalance | null>(null);
+  const [invoiceLoading, setInvoiceLoading] = React.useState(false);
 
   const isAdmin = activeRoles.includes("admin");
   const canUpdateReports = can("reports", "update");
@@ -88,6 +90,30 @@ export default function Reports() {
   React.useEffect(() => {
     if (!canViewFees && reportType === "invoice") setReportType("report-card");
   }, [canViewFees, reportType]);
+
+  React.useEffect(() => {
+    let active = true;
+    if (!selectedStudent || reportType !== "invoice" || !canViewFees) {
+      setInvoiceBalance(null);
+      return;
+    }
+    setInvoiceLoading(true);
+    const params = new URLSearchParams({ term: selectedTerm, year: selectedYear, className: selectedStudent.class });
+    void apiRequest<{ balances: FeeBalance[] }>(`/api/fees/balances?${params}`)
+      .then((result) => {
+        if (active) setInvoiceBalance(result.balances.find((balance) => balance.studentId === selectedStudent.id) ?? null);
+      })
+      .catch((error) => {
+        if (active) {
+          setInvoiceBalance(null);
+          toast.error(error instanceof Error ? error.message : "Could not load the fee balance.");
+        }
+      })
+      .finally(() => {
+        if (active) setInvoiceLoading(false);
+      });
+    return () => { active = false; };
+  }, [canViewFees, reportType, selectedStudent, selectedTerm, selectedYear, toast]);
 
   const filteredStudents = React.useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -235,7 +261,8 @@ export default function Reports() {
           {!selectedStudent ? (
             <div className="app-empty-state flex min-h-[420px] flex-col items-center justify-center"><FileText className="mb-3 h-10 w-10 text-slate-300" />Select a student to build a report.</div>
           ) : reportType === "invoice" ? (
-            <FeeStatement student={selectedStudent} currency={schoolSettings.currency || "UGX"} schoolSettings={schoolSettings} term={selectedTerm} year={selectedYear} feeItems={feeStructures.find((fee) => fee.className === selectedStudent.class && fee.term === selectedTerm && fee.academicYear === selectedYear)?.items || []} />
+            invoiceLoading ? <div className="app-empty-state flex min-h-[420px] items-center justify-center gap-3"><LoaderCircle className="h-5 w-5 animate-spin text-blue-600" />Loading fee statement...</div> :
+            <FeeStatement student={selectedStudent} currency={schoolSettings.currency || "UGX"} schoolSettings={schoolSettings} term={selectedTerm} year={selectedYear} feeItems={feeStructures.find((fee) => fee.className === selectedStudent.class && fee.term === selectedTerm && fee.academicYear === selectedYear)?.items || []} feeBalance={invoiceBalance} />
           ) : loading ? (
             <div className="app-empty-state flex min-h-[420px] items-center justify-center gap-3"><LoaderCircle className="h-5 w-5 animate-spin text-blue-600" />Building report...</div>
           ) : report ? (
@@ -271,8 +298,8 @@ export default function Reports() {
   );
 }
 
-function FeeStatement({ student, currency, schoolSettings, term, year, feeItems }: { student: Student; currency: string; schoolSettings: ReturnType<typeof useApp>["schoolSettings"]; term: string; year: string; feeItems: { name: string; amount: number }[] }) {
-  const items = feeItems.length ? feeItems : [{ name: "School Fees", amount: student.totalFeesPaid + student.feesBalance }];
+function FeeStatement({ student, currency, schoolSettings, term, year, feeItems, feeBalance }: { student: Student; currency: string; schoolSettings: ReturnType<typeof useApp>["schoolSettings"]; term: string; year: string; feeItems: { name: string; amount: number }[]; feeBalance: FeeBalance | null }) {
+  const items = feeItems.length ? feeItems : feeBalance && feeBalance.standardFee > 0 ? [{ name: "School Fees", amount: feeBalance.standardFee }] : [];
   const invoice: InvoiceData = {
     invoiceNumber: `INV-${year.replace(/\W/g, "")}-${student.reg}`,
     date: new Date().toISOString().slice(0, 10),
@@ -295,8 +322,8 @@ function FeeStatement({ student, currency, schoolSettings, term, year, feeItems 
     subtotal: items.reduce((sum, item) => sum + item.amount, 0),
     vat: 0,
     total: items.reduce((sum, item) => sum + item.amount, 0),
-    paid: student.totalFeesPaid,
-    balance: student.feesBalance,
+    paid: feeBalance?.paidAmount || 0,
+    balance: feeBalance?.outstandingAmount || 0,
     currency,
   };
 
@@ -305,7 +332,8 @@ function FeeStatement({ student, currency, schoolSettings, term, year, feeItems 
       <div className="mx-auto min-h-[297mm] w-[210mm] bg-white p-12 shadow-xl print:shadow-none">
         <div className="flex items-start justify-between gap-4"><div><p className="text-sm font-semibold uppercase tracking-wide text-blue-600">{schoolSettings.name}</p><h2 className="mt-2 text-3xl font-semibold text-slate-950">Fee statement</h2></div><button className="app-button-primary print:hidden" onClick={() => void exportInvoicePdf(invoice)}><FileText className="h-4 w-4" />Download PDF</button></div>
         <p className="mt-2 text-sm text-slate-500">{student.name} / {student.class} / {student.lin || student.reg}</p>
-        <div className="mt-10 overflow-hidden rounded-lg border border-slate-200"><table className="app-table"><tbody><tr><td>Total fees paid</td><td className="text-right font-semibold text-emerald-700">{formatCurrency(student.totalFeesPaid || 0, currency)}</td></tr><tr><td>Outstanding balance</td><td className="text-right font-semibold text-rose-700">{formatCurrency(student.feesBalance || 0, currency)}</td></tr></tbody></table></div>
+        {!feeBalance && <p className="mt-8 rounded-lg bg-amber-50 p-4 text-sm text-amber-800">No active fee structure is configured for this class and period.</p>}
+        <div className="mt-10 overflow-hidden rounded-lg border border-slate-200"><table className="app-table"><tbody><tr><td>Total fees paid</td><td className="text-right font-semibold text-emerald-700">{formatCurrency(feeBalance?.paidAmount || 0, currency)}</td></tr><tr><td>Outstanding balance</td><td className="text-right font-semibold text-rose-700">{formatCurrency(feeBalance?.outstandingAmount || 0, currency)}</td></tr>{(feeBalance?.creditAmount || 0) > 0 && <tr><td>Credit</td><td className="text-right font-semibold text-blue-700">{formatCurrency(feeBalance?.creditAmount || 0, currency)}</td></tr>}</tbody></table></div>
       </div>
     </div>
   );

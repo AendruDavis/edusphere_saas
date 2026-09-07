@@ -20,6 +20,8 @@ export type AuthUser = {
   name: string;
   role: UserRole;
   platformRole: PlatformRole | null;
+  mustChangePassword?: boolean;
+  passwordChangedAt?: string | null;
 };
 
 export function canAccessRole(user: AuthUser | null, roles: readonly (SchoolRole | UserRole)[]) {

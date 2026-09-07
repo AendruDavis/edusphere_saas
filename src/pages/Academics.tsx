@@ -16,18 +16,23 @@ import { useApp } from "../context/AppContext";
 import { ResponsiveDialog } from "../components/ui/ResponsiveDialog";
 
 export default function Academics() {
-  const { students, marks, addMark, schoolSettings } = useApp();
+  const { students, subjects, marks, addMark, schoolSettings } = useApp();
+  const activeSubjects = subjects.filter((subject) => subject.active);
   const [activeTab, setActiveTab] = useState<"classes" | "marks" | "reports">("classes");
   const [isMarkModalOpen, setIsMarkModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [markForm, setMarkForm] = useState({
-    subject: "Mathematics",
+    subject: "",
     score: 0,
-    term: "Term 1",
+    term: schoolSettings.currentTerm || "Term 1",
     year: schoolSettings.academicYear,
     comment: ""
   });
+
+  React.useEffect(() => {
+    if (!markForm.subject && activeSubjects[0]) setMarkForm((current) => ({ ...current, subject: activeSubjects[0].name }));
+  }, [activeSubjects, markForm.subject]);
 
   const getGrade = (score: number) => {
     if (!schoolSettings.gradingScale) return { grade: "N/A", comment: "" };
@@ -280,7 +285,7 @@ export default function Academics() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700">Subject</label>
-                  <input type="text" value={markForm.subject} onChange={(e) => setMarkForm({...markForm, subject: e.target.value})} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none text-sm" required />
+                  <select value={markForm.subject} onChange={(e) => setMarkForm({...markForm, subject: e.target.value})} className="app-select" required><option value="">Select subject</option>{activeSubjects.map((subject) => <option key={subject.id} value={subject.name}>{subject.name}</option>)}</select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700">Score (%)</label>

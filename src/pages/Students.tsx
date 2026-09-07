@@ -14,7 +14,7 @@ import { useForm } from "react-hook-form";
 import { Link } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { cn } from "../lib/utils";
+import { cn, formatCurrency } from "../lib/utils";
 import { useApp } from "../context/AppContext";
 import { uploadDataUrlAsset } from "../lib/api";
 import { ResponsiveDialog } from "../components/ui/ResponsiveDialog";
@@ -35,7 +35,8 @@ const studentSchema = z.object({
 type StudentFormValues = z.infer<typeof studentSchema>;
 
 export default function Students() {
-  const { students, addStudent, updateStudent, deleteStudent, schoolSettings, getClassFees } = useApp();
+  const { students, addStudent, updateStudent, deleteStudent, schoolSettings, getStudentFeeBalance, can } = useApp();
+  const canViewFees = can("fees");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<any>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -231,7 +232,7 @@ export default function Students() {
             </div>
           ) : (
             filteredStudents.map((student: any) => {
-              const balance = getClassFees(student.class) - (student.totalFeesPaid || 0);
+              const balance = getStudentFeeBalance(student.id);
               return (
                 <article key={student.id} className="app-mobile-record">
                   <div className="flex items-start gap-3">
@@ -260,12 +261,12 @@ export default function Students() {
                       <dt className="text-xs text-slate-500">Guardian</dt>
                       <dd className="mt-0.5 truncate font-medium text-slate-800">{student.parent || "Not recorded"}</dd>
                     </div>
-                    <div>
+                    {canViewFees && <div>
                       <dt className="text-xs text-slate-500">Fees</dt>
-                      <dd className={cn("mt-0.5 font-semibold", balance > 0 ? "text-rose-700" : "text-emerald-700")}>
-                        {balance > 0 ? `UGX ${balance.toLocaleString()} due` : "Cleared"}
+                      <dd className={cn("mt-0.5 font-semibold", (balance?.outstandingAmount || 0) > 0 ? "text-rose-700" : "text-emerald-700")}>
+                        {balance?.status === "unconfigured" ? "Not configured" : (balance?.outstandingAmount || 0) > 0 ? `${formatCurrency(balance?.outstandingAmount || 0, schoolSettings.currency || "UGX")} due` : "Cleared"}
                       </dd>
-                    </div>
+                    </div>}
                   </dl>
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     <button type="button" onClick={() => handleEdit(student)} className="app-button-secondary">Edit</button>
@@ -283,7 +284,7 @@ export default function Students() {
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Student</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Reg. Number</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Class</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Fees Balance</th>
+                {canViewFees && <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Fees Balance</th>}
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Parent/Guardian</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
@@ -292,7 +293,7 @@ export default function Students() {
             <tbody className="divide-y divide-gray-100">
               {filteredStudents.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={canViewFees ? 7 : 6} className="px-6 py-12 text-center text-gray-500">
                     No students found matching your criteria.
                   </td>
                 </tr>
@@ -318,18 +319,20 @@ export default function Students() {
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600 font-medium">{student.reg}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{student.class}</td>
-                    <td className="px-6 py-4">
+                    {canViewFees && <td className="px-6 py-4">
                       <span className={cn(
                         "text-xs font-black uppercase tracking-widest px-2 py-1 rounded-lg",
-                        (getClassFees(student.class) - (student.totalFeesPaid || 0)) > 0 
+                        (getStudentFeeBalance(student.id)?.outstandingAmount || 0) > 0 
                           ? "bg-rose-50 text-rose-600 border border-rose-100" 
                           : "bg-emerald-50 text-emerald-600 border border-emerald-100"
                       )}>
-                        {getClassFees(student.class) - (student.totalFeesPaid || 0) > 0 
-                          ? `Due: ${getClassFees(student.class) - (student.totalFeesPaid || 0)}` 
-                          : "Cleared"}
+                        {getStudentFeeBalance(student.id)?.status === "unconfigured"
+                          ? "Not configured"
+                          : (getStudentFeeBalance(student.id)?.outstandingAmount || 0) > 0
+                            ? `Due: ${formatCurrency(getStudentFeeBalance(student.id)?.outstandingAmount || 0, schoolSettings.currency || "UGX")}`
+                            : "Cleared"}
                       </span>
-                    </td>
+                    </td>}
                     <td className="px-6 py-4 text-sm text-gray-600">{student.parent}</td>
                     <td className="px-6 py-4">
                       <span className={cn(

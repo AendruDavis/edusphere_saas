@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, randomInt, scryptSync, timingSafeEqual } from "node:crypto";
 import type { PoolClient } from "pg";
 import { AppError, assertFound } from "../domain/errors";
 import {
@@ -17,20 +17,20 @@ import type { AuthorizationMode, SchoolMembership, TenantContext } from "../doma
 type CreateUserInput = {
   name: string;
   email: string;
-  password: string;
   role?: SchoolRole;
   roles?: SchoolRole[];
   photo?: string | null;
   dept?: string;
+  confirmPassword?: string;
 };
 
-type UpdateUserInput = Partial<Omit<CreateUserInput, "password">> & {
-  password?: string;
-};
+type UpdateUserInput = Pick<Partial<CreateUserInput>, "name" | "email" | "photo" | "dept">;
 
 type TokenPayload = {
   sub: string;
   exp: number;
+  iat: number;
+  pwd?: number;
 };
 
 function normalizeEmail(email: string) {
@@ -49,10 +49,13 @@ function base64Url(input: Buffer | string) {
   return Buffer.from(input).toString("base64url");
 }
 
-function signToken(userId: string) {
+function signToken(userId: string, passwordChangedAt?: string | Date | null) {
+  const now = Math.floor(Date.now() / 1000);
   const payload: TokenPayload = {
     sub: userId,
-    exp: Math.floor(Date.now() / 1000) + 60 * 60 * 8,
+    iat: now,
+    exp: now + 60 * 60 * 8,
+    pwd: passwordChangedAt ? new Date(passwordChangedAt).getTime() : 0,
   };
   const header = base64Url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const body = base64Url(JSON.stringify(payload));
@@ -97,6 +100,11 @@ function verifyPassword(password: string, storedHash: string) {
   return stored.length === candidate.length && timingSafeEqual(stored, candidate);
 }
 
+function generateTemporaryPassword(length = 20) {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*?";
+  return Array.from({ length }, () => alphabet[randomInt(alphabet.length)]).join("");
+}
+
 function normalizeSchoolRoles(input: unknown, fallback?: unknown): SchoolRole[] {
   const values = Array.isArray(input) ? input : fallback ? [fallback] : [];
   const roles = [...new Set(values.filter((value): value is SchoolRole => typeof value === "string" && isSchoolRole(value)))];
@@ -138,7 +146,7 @@ export class AuthService {
     }
 
     const profile = await this.loadProfile(user.id);
-    const session = signToken(user.id);
+    const session = signToken(user.id, profile.passwordChangedAt);
     return {
       accessToken: session.token,
       refreshToken: session.token,
@@ -150,7 +158,10 @@ export class AuthService {
 
   async verifyToken(token: string): Promise<AuthUser> {
     const payload = verifySignedToken(token);
-    return this.loadProfile(payload.sub);
+    const profile = await this.loadProfile(payload.sub);
+    const passwordVersion = profile.passwordChangedAt ? new Date(profile.passwordChangedAt).getTime() : 0;
+    if (passwordVersion !== (payload.pwd ?? 0)) throw new AppError(401, "Session expired after a password change");
+    return profile;
   }
 
   async listSchoolMemberships(userId: string): Promise<SchoolMembership[]> {
@@ -241,8 +252,11 @@ export class AuthService {
       email: string;
       role: string;
       platformRole: string | null;
+      mustChangePassword: boolean;
+      passwordChangedAt: Date | string | null;
     }>(
-      `select u.id, u.name, u.email, coalesce(ur.role, u.role) as role, u."platformRole"
+      `select u.id, u.name, u.email, coalesce(ur.role, u.role) as role, u."platformRole",
+         u."mustChangePassword", u."passwordChangedAt"
        from users u
        left join user_roles ur on ur."userId" = u.id and ur.active = true
        where u.id = $1
@@ -256,22 +270,37 @@ export class AuthService {
       ? profile.platformRole
       : null;
     const role: UserRole = platformRole ?? (isUserRole(profile.role) ? profile.role : "student");
-    return { id: profile.id, name: profile.name, email: profile.email, role, platformRole };
+    return {
+      id: profile.id,
+      name: profile.name,
+      email: profile.email,
+      role,
+      platformRole,
+      mustChangePassword: profile.mustChangePassword,
+      passwordChangedAt: profile.passwordChangedAt ? new Date(profile.passwordChangedAt).toISOString() : null,
+    };
   }
 
   async createUser(input: CreateUserInput, schoolId: string, actorId?: string) {
     const email = normalizeEmail(input.email);
     const roles = normalizeSchoolRoles(input.roles, input.role);
+    const temporaryPassword = generateTemporaryPassword();
     return withTransaction(async (client) => {
       const existing = await client.query(`select id from users where email = $1 limit 1`, [email]);
-      if (existing.rows[0]) throw new AppError(409, "A user with this email already exists");
+      if (existing.rows[0]) {
+        throw new AppError(409, "This email is already registered", {
+          fieldErrors: { email: ["Use another email address. Existing accounts cannot be attached automatically"] },
+        });
+      }
+      if (roles.includes("admin") && actorId) await this.assertActorPassword(client, actorId, input.confirmPassword);
 
       const role = primarySchoolRole(roles);
       const result = await client.query(
-        `insert into users (name, email, role, "passwordHash", photo, dept)
-         values ($1, $2, $3, $4, $5, $6)
-         returning id, name, email, role, photo, dept, "createdAt", "updatedAt"`,
-        [input.name, email, role, hashPassword(input.password), input.photo ?? null, input.dept ?? null],
+        `insert into users (
+           name, email, role, "passwordHash", photo, dept, "mustChangePassword", "passwordChangedAt"
+         ) values ($1, $2, $3, $4, $5, $6, true, now())
+         returning id, name, email, role, photo, dept, "mustChangePassword", "passwordChangedAt", "createdAt", "updatedAt"`,
+        [input.name, email, role, hashPassword(temporaryPassword), input.photo ?? null, input.dept ?? null],
       );
       const user = result.rows[0];
       await client.query(
@@ -290,18 +319,26 @@ export class AuthService {
         );
       }
       await this.writeAccessAudit(client, schoolId, actorId, String(user.id), [], roles, "user.access_created");
-      return { ...user, roles };
+      return { user: { ...user, roles }, temporaryPassword, mustChangePassword: true };
     });
   }
 
   async updateUser(id: string, input: UpdateUserInput, schoolId?: string, actorId?: string) {
     return withTransaction(async (client) => {
+      if (schoolId) await this.lockMembership(client, schoolId, id);
+      if (input.email) {
+        const duplicate = await client.query(`select id from users where email = $1 and id <> $2 limit 1`, [normalizeEmail(input.email), id]);
+        if (duplicate.rows[0]) {
+          throw new AppError(409, "This email is already registered", {
+            fieldErrors: { email: ["Use another email address"] },
+          });
+        }
+      }
       const updates: Record<string, unknown> = {
         name: input.name,
         email: input.email ? normalizeEmail(input.email) : undefined,
         photo: input.photo,
         dept: input.dept,
-        passwordHash: input.password ? hashPassword(input.password) : undefined,
         updatedAt: new Date().toISOString(),
       };
       const clean = Object.fromEntries(Object.entries(updates).filter(([, value]) => value !== undefined));
@@ -324,21 +361,82 @@ export class AuthService {
         user = assertFound(result.rows[0], "User not found");
       }
 
-      let roles: SchoolRole[] | undefined;
-      if (schoolId && (input.roles || input.role)) {
-        roles = normalizeSchoolRoles(input.roles, input.role);
-        await this.replaceMembershipRoles(client, schoolId, id, roles, actorId);
-      }
-      return { ...user, ...(roles ? { role: primarySchoolRole(roles), roles } : {}) };
+      return user;
     });
   }
 
-  async removeUserFromSchool(id: string, schoolId: string, actorId?: string) {
+  async replaceSchoolRoles(id: string, rolesInput: SchoolRole[], schoolId: string, actorId: string, confirmPassword?: string) {
+    const roles = normalizeSchoolRoles(rolesInput);
+    return withTransaction(async (client) => {
+      const membership = await this.lockMembership(client, schoolId, id);
+      const oldRoles = await this.membershipRoles(client, membership.id, membership.role);
+      const adminChanged = oldRoles.includes("admin") !== roles.includes("admin");
+      if (adminChanged) await this.assertActorPassword(client, actorId, confirmPassword);
+      await this.replaceMembershipRoles(client, schoolId, id, roles, actorId);
+      return { id, role: primarySchoolRole(roles), roles };
+    });
+  }
+
+  async resetPassword(id: string, schoolId: string, actorId: string, confirmPassword: string) {
+    const temporaryPassword = generateTemporaryPassword();
+    return withTransaction(async (client) => {
+      await this.lockMembership(client, schoolId, id);
+      await this.assertActorPassword(client, actorId, confirmPassword);
+      const result = await client.query(
+        `update users set "passwordHash" = $2, "mustChangePassword" = true,
+           "passwordChangedAt" = clock_timestamp(), "updatedAt" = now()
+         where id = $1 returning id, "mustChangePassword", "passwordChangedAt"`,
+        [id, hashPassword(temporaryPassword)],
+      );
+      const user = assertFound(result.rows[0], "User not found");
+      await this.writeAccessAudit(client, schoolId, actorId, id, [], [], "user.password_reset");
+      return { user, temporaryPassword, mustChangePassword: true };
+    });
+  }
+
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const passwordChangedAt = await withTransaction(async (client) => {
+      const result = await client.query<{ passwordHash: string }>(
+        `select "passwordHash" from users where id = $1 for update`,
+        [userId],
+      );
+      const user = assertFound(result.rows[0], "User not found");
+      if (!verifyPassword(currentPassword, user.passwordHash)) {
+        throw new AppError(400, "Current password is incorrect", {
+          fieldErrors: { currentPassword: ["Enter your current password"] },
+        });
+      }
+      if (verifyPassword(newPassword, user.passwordHash)) {
+        throw new AppError(400, "Choose a different password", {
+          fieldErrors: { newPassword: ["The new password must differ from the current password"] },
+        });
+      }
+      const updated = await client.query<{ passwordChangedAt: Date }>(
+        `update users set "passwordHash" = $2, "mustChangePassword" = false,
+           "passwordChangedAt" = clock_timestamp(), "updatedAt" = now()
+         where id = $1 returning "passwordChangedAt"`,
+        [userId, hashPassword(newPassword)],
+      );
+      await client.query(
+        `insert into audit_logs ("schoolId", "actorId", action, entity, "entityId", "riskLevel", summary)
+         select sm."schoolId", $1, 'user.password_changed', 'users', $1, 'restricted', 'Changed account password'
+         from school_memberships sm where sm."userId" = $1 and sm.active = true`,
+        [userId],
+      );
+      return updated.rows[0].passwordChangedAt;
+    });
+    const profile = await this.loadProfile(userId);
+    const session = signToken(userId, passwordChangedAt);
+    return { accessToken: session.token, refreshToken: session.token, expiresAt: session.expiresAt, user: profile };
+  }
+
+  async removeUserFromSchool(id: string, schoolId: string, actorId?: string, confirmPassword?: string) {
     return withTransaction(async (client) => {
       await client.query(`select id from schools where id = $1 for update`, [schoolId]);
       const membership = await this.lockMembership(client, schoolId, id);
       const oldRoles = await this.membershipRoles(client, membership.id, membership.role);
       if (actorId === id) throw new AppError(400, "You cannot remove your own school access");
+      if (oldRoles.includes("admin") && actorId) await this.assertActorPassword(client, actorId, confirmPassword);
       await this.assertAdminRemains(client, schoolId, id, oldRoles, []);
       await client.query(
         `update school_memberships set active = false, "updatedAt" = now() where id = $1`,
@@ -438,6 +536,23 @@ export class AuthService {
     await this.writeAccessAudit(client, schoolId, actorId, userId, oldRoles, roles, "user.access_updated");
   }
 
+  private async assertActorPassword(client: PoolClient, actorId: string, password?: string) {
+    if (!password) {
+      throw new AppError(400, "Confirm your password for this administrator change", {
+        fieldErrors: { confirmPassword: ["Password confirmation is required"] },
+      });
+    }
+    const result = await client.query<{ passwordHash: string }>(
+      `select "passwordHash" from users where id = $1`,
+      [actorId],
+    );
+    if (!result.rows[0] || !verifyPassword(password, result.rows[0].passwordHash)) {
+      throw new AppError(400, "Password confirmation failed", {
+        fieldErrors: { confirmPassword: ["The password is incorrect"] },
+      });
+    }
+  }
+
   private async lockMembership(client: PoolClient, schoolId: string, userId: string) {
     const result = await client.query<{ id: string; role: string }>(
       `select id, role from school_memberships
@@ -502,4 +617,6 @@ export class AuthService {
 
 export const passwordTools = {
   hashPassword,
+  verifyPassword,
+  generateTemporaryPassword,
 };

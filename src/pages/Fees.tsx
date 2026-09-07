@@ -17,15 +17,20 @@ import { cn, formatCurrency } from "../lib/utils";
 import { useApp } from "../context/AppContext";
 import { ResponsiveDialog } from "../components/ui/ResponsiveDialog";
 import { FormGrid, HorizontalScroller, SegmentedTabs } from "../components/ui/ResponsivePrimitives";
+import { useToast } from "../context/ToastContext";
+import { apiFieldErrors } from "../lib/api";
 
 export default function Fees() {
-  const { students, schoolSettings, transactions, recordFeePayment, feeStructures, addFeeStructure, updateFeeStructure, getClassFees } = useApp();
+  const { students, schoolSettings, transactions, recordFeePayment, feeStructures, addFeeStructure, updateFeeStructure, deactivateFeeStructure, feeBalances, feePeriod, refreshFeeBalances, getStudentFeeBalance, can } = useApp();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<"overview" | "payments" | "structure">("overview");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingFeeStructureId, setEditingFeeStructureId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedClass, setSelectedClass] = useState("All");
   const [feeStatusFilter, setFeeStatusFilter] = useState<"all" | "paid" | "partial" | "unpaid">("all");
+  const [periodDraft, setPeriodDraft] = useState({ term: feePeriod.term, year: feePeriod.year });
+  const [formErrors, setFormErrors] = useState<Record<string, string[]>>({});
 
   const [paymentFormData, setPaymentFormData] = useState({
     studentId: "",
@@ -33,35 +38,33 @@ export default function Fees() {
     category: "tuition",
     method: "Cash",
     date: new Date().toISOString().split('T')[0],
-    description: ""
+    description: "",
+    term: feePeriod.term,
+    year: feePeriod.year,
   });
 
   const [feeFormData, setFeeFormData] = useState({
     className: "",
-    term: "Term 1",
+    term: schoolSettings.currentTerm || "Term 1",
     academicYear: schoolSettings.academicYear || "2026/2027",
     items: [{ name: "Tuition", amount: 0 }],
     totalAmount: 0
   });
 
   const studentPayments = transactions.filter(t => t.type === "income" && t.studentId);
-  const totalCollected = studentPayments.reduce((sum, t) => sum + t.amount, 0);
-
-  // Calculate totals based on Class Fees set in settings
   const studentsFilteredByClass = selectedClass === "All" ? students : students.filter(s => s.class === selectedClass);
-  
-  const totalExpected = studentsFilteredByClass.reduce((sum, s) => sum + getClassFees(s.class), 0);
-  const totalPaid = studentsFilteredByClass.reduce((sum, s) => sum + s.totalFeesPaid, 0);
-  const totalOutstanding = totalExpected - totalPaid;
+  const balancesFilteredByClass = selectedClass === "All" ? feeBalances : feeBalances.filter((balance) => balance.class === selectedClass);
+  const totalExpected = balancesFilteredByClass.reduce((sum, balance) => sum + balance.standardFee, 0);
+  const totalPaid = balancesFilteredByClass.reduce((sum, balance) => sum + balance.paidAmount, 0);
+  const totalOutstanding = balancesFilteredByClass.reduce((sum, balance) => sum + balance.outstandingAmount, 0);
 
   const studentsWithBalance = studentsFilteredByClass.filter(s => {
-    const expected = getClassFees(s.class);
-    const balance = expected - s.totalFeesPaid;
+    const balance = getStudentFeeBalance(s.id);
     const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.reg.toLowerCase().includes(searchQuery.toLowerCase());
     
-    if (feeStatusFilter === "unpaid") return balance === expected && expected > 0 && matchesSearch;
-    if (feeStatusFilter === "partial") return balance > 0 && balance < expected && matchesSearch;
-    if (feeStatusFilter === "paid") return balance <= 0 && expected > 0 && matchesSearch;
+    if (feeStatusFilter === "unpaid") return balance?.status === "outstanding" && matchesSearch;
+    if (feeStatusFilter === "partial") return balance?.status === "partial" && matchesSearch;
+    if (feeStatusFilter === "paid") return balance?.status === "paid" && matchesSearch;
     return matchesSearch;
   });
 
@@ -70,28 +73,44 @@ export default function Fees() {
     const student = students.find(s => s.id === paymentFormData.studentId);
     if (!student) return;
 
-    await recordFeePayment({
-      studentId: student.id,
-      amount: paymentFormData.amount,
-      term: "Term 1",
-      year: schoolSettings.academicYear || "2026/2027",
-      method: paymentFormData.method,
-      description: `Fees payment for ${student.name} - ${paymentFormData.description || paymentFormData.category}`
-    });
-
-    setIsModalOpen(false);
+    setFormErrors({});
+    try {
+      await recordFeePayment({
+        studentId: student.id,
+        amount: paymentFormData.amount,
+        term: paymentFormData.term,
+        year: paymentFormData.year,
+        method: paymentFormData.method,
+        paidAt: paymentFormData.date,
+        description: `Fees payment for ${student.name} - ${paymentFormData.description || paymentFormData.category}`,
+      });
+      await refreshFeeBalances({ term: paymentFormData.term, year: paymentFormData.year });
+      setPeriodDraft({ term: paymentFormData.term, year: paymentFormData.year });
+      setIsModalOpen(false);
+      toast.success("Fee payment recorded.");
+    } catch (error) {
+      setFormErrors(apiFieldErrors(error));
+      toast.error(error instanceof Error ? error.message : "Unable to record payment");
+    }
   };
 
   const handleFeeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const total = feeFormData.items.reduce((s, i) => s + i.amount, 0);
-    if (editingFeeStructureId) {
-      await updateFeeStructure(editingFeeStructureId, { ...feeFormData, totalAmount: total });
-    } else {
-      await addFeeStructure({ ...feeFormData, totalAmount: total });
+    setFormErrors({});
+    try {
+      if (editingFeeStructureId) {
+        await updateFeeStructure(editingFeeStructureId, { ...feeFormData, totalAmount: total });
+      } else {
+        await addFeeStructure({ ...feeFormData, totalAmount: total });
+      }
+      setIsModalOpen(false);
+      setEditingFeeStructureId(null);
+      toast.success("Fee structure saved.");
+    } catch (error) {
+      setFormErrors(apiFieldErrors(error));
+      toast.error(error instanceof Error ? error.message : "Unable to save fee structure");
     }
-    setIsModalOpen(false);
-    setEditingFeeStructureId(null);
   };
 
   const openPaymentDialog = (studentId = "") => {
@@ -103,6 +122,8 @@ export default function Fees() {
       method: "Cash",
       date: new Date().toISOString().split("T")[0],
       description: "",
+      term: feePeriod.term,
+      year: feePeriod.year,
     });
     setIsModalOpen(true);
   };
@@ -117,12 +138,32 @@ export default function Fees() {
       totalAmount: feeStructure.totalAmount,
     } : {
       className: schoolSettings.classes[0] || "",
-      term: "Term 1",
+      term: schoolSettings.currentTerm || feePeriod.term,
       academicYear: schoolSettings.academicYear || "2026/2027",
       items: [{ name: "Tuition", amount: 0 }],
       totalAmount: 0,
     });
     setIsModalOpen(true);
+  };
+
+  const applyPeriod = async () => {
+    try {
+      await refreshFeeBalances(periodDraft);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to load fee balances");
+    }
+  };
+
+  const archiveFeeStructure = async () => {
+    if (!editingFeeStructureId || !window.confirm("Archive this fee structure? Historical records will be retained.")) return;
+    try {
+      await deactivateFeeStructure(editingFeeStructureId);
+      setEditingFeeStructureId(null);
+      setIsModalOpen(false);
+      toast.success("Fee structure archived.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to archive fee structure");
+    }
   };
 
   const filteredPayments = studentPayments.filter(p => {
@@ -196,8 +237,8 @@ export default function Fees() {
 
       {/* Enhanced Filters */}
       <div className="app-panel">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <div className="md:col-span-2 relative group">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <div className="relative group md:col-span-2">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-blue-600 transition-colors" />
             <input 
               type="text" 
@@ -231,7 +272,11 @@ export default function Fees() {
                <option value="unpaid">Zero Paid / Arrears</option>
              </select>
           </div>
+          <select aria-label="Fee term" className="app-select" value={periodDraft.term} onChange={(event) => setPeriodDraft((value) => ({ ...value, term: event.target.value }))}><option>Term 1</option><option>Term 2</option><option>Term 3</option></select>
+          <input aria-label="Fee academic year" className="app-input" value={periodDraft.year} onChange={(event) => setPeriodDraft((value) => ({ ...value, year: event.target.value }))} />
+          <button type="button" className="app-button-secondary" onClick={() => void applyPeriod()}>Apply period</button>
         </div>
+        <p className="mt-3 text-xs text-slate-500">Showing {feePeriod.term}, {feePeriod.year}</p>
       </div>
 
       {/* Tab Switcher */}
@@ -252,9 +297,10 @@ export default function Fees() {
         <div className="overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm">
           <div className="space-y-3 bg-slate-50/60 p-3 md:hidden">
             {studentsWithBalance.map((student) => {
-              const expected = getClassFees(student.class);
-              const paid = student.totalFeesPaid;
-              const balance = expected - paid;
+              const feeBalance = getStudentFeeBalance(student.id);
+              const expected = feeBalance?.standardFee || 0;
+              const paid = feeBalance?.paidAmount || 0;
+              const balance = feeBalance?.outstandingAmount || 0;
               return (
                 <button key={student.id} type="button" className="app-mobile-record w-full text-left" onClick={() => openPaymentDialog(student.id)}>
                   <div className="flex items-start justify-between gap-3">
@@ -287,10 +333,11 @@ export default function Fees() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {studentsWithBalance.map(student => {
-                const expected = getClassFees(student.class);
-                const paid = student.totalFeesPaid;
-                const balance = expected - paid;
-                const status = balance <= 0 ? "paid" : paid > 0 ? "partial" : "unpaid";
+                const feeBalance = getStudentFeeBalance(student.id);
+                const expected = feeBalance?.standardFee || 0;
+                const paid = feeBalance?.paidAmount || 0;
+                const balance = feeBalance?.outstandingAmount || 0;
+                const status = feeBalance?.status || "unconfigured";
 
                 return (
                   <tr key={student.id} className="hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => {
@@ -445,6 +492,11 @@ export default function Fees() {
         maxWidth="max-w-xl"
         footer={(
           <>
+            {activeTab === "structure" && editingFeeStructureId && can("fees", "delete") && (
+              <button type="button" className="app-button-secondary mr-auto text-rose-700" onClick={() => void archiveFeeStructure()}>
+                <Trash2 className="h-4 w-4" />Archive
+              </button>
+            )}
             <button type="button" className="app-button-secondary" onClick={() => { setIsModalOpen(false); setEditingFeeStructureId(null); }}>Cancel</button>
             <button type="submit" form="fees-entry-form" className="app-button-primary">
               {activeTab === "structure" ? (editingFeeStructureId ? "Update structure" : "Save structure") : "Record payment"}
@@ -461,12 +513,14 @@ export default function Fees() {
                   <option value="">Select student</option>
                   {students.map((student) => (
                     <option key={student.id} value={student.id}>
-                      {student.name} ({student.reg}) - Balance {formatCurrency(getClassFees(student.class) - student.totalFeesPaid, schoolSettings.currency || "UGX")}
+                      {student.name} ({student.reg}) - Balance {formatCurrency(getStudentFeeBalance(student.id)?.outstandingAmount || 0, schoolSettings.currency || "UGX")}
                     </option>
                   ))}
                 </select>
               </label>
               <FormGrid>
+                <label className="space-y-1.5 text-sm font-medium text-slate-700">Term<select className="app-select" value={paymentFormData.term} onChange={(event) => setPaymentFormData({ ...paymentFormData, term: event.target.value })}><option>Term 1</option><option>Term 2</option><option>Term 3</option></select></label>
+                <label className="space-y-1.5 text-sm font-medium text-slate-700">Academic year<input className="app-input" required value={paymentFormData.year} onChange={(event) => setPaymentFormData({ ...paymentFormData, year: event.target.value })} /></label>
                 <label className="space-y-1.5 text-sm font-medium text-slate-700">
                   Amount ({schoolSettings.currency || "UGX"})
                   <input type="number" min="1" required value={paymentFormData.amount} onChange={(event) => setPaymentFormData({ ...paymentFormData, amount: Number(event.target.value) || 0 })} className="app-input" />
@@ -523,6 +577,7 @@ export default function Fees() {
                 </label>
               </FormGrid>
               <div className="space-y-3">
+                {formErrors.className?.[0] && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{formErrors.className[0]}</p>}
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-sm font-semibold text-slate-900">Fee items</h3>
                   <button type="button" className="app-button-secondary" onClick={() => setFeeFormData({ ...feeFormData, items: [...feeFormData.items, { name: "", amount: 0 }] })}>
@@ -531,9 +586,9 @@ export default function Fees() {
                   </button>
                 </div>
                 {feeFormData.items.map((item, index) => (
-                  <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(0,140px)_44px] gap-2">
+                  <div key={index} className="grid grid-cols-[minmax(0,1fr)_44px] gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,140px)_44px]">
                     <input required aria-label={`Fee item ${index + 1} name`} className="app-input" placeholder="Fee name" value={item.name} onChange={(event) => setFeeFormData({ ...feeFormData, items: feeFormData.items.map((entry, itemIndex) => itemIndex === index ? { ...entry, name: event.target.value } : entry) })} />
-                    <input required aria-label={`Fee item ${index + 1} amount`} type="number" min="0" className="app-input" value={item.amount} onChange={(event) => setFeeFormData({ ...feeFormData, items: feeFormData.items.map((entry, itemIndex) => itemIndex === index ? { ...entry, amount: Number(event.target.value) || 0 } : entry) })} />
+                    <input required aria-label={`Fee item ${index + 1} amount`} type="number" min="0" className="app-input col-span-2 sm:col-span-1" value={item.amount} onChange={(event) => setFeeFormData({ ...feeFormData, items: feeFormData.items.map((entry, itemIndex) => itemIndex === index ? { ...entry, amount: Number(event.target.value) || 0 } : entry) })} />
                     <button type="button" className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600" aria-label={`Remove fee item ${index + 1}`} disabled={feeFormData.items.length === 1} onClick={() => setFeeFormData({ ...feeFormData, items: feeFormData.items.filter((_, itemIndex) => itemIndex !== index) })}>
                       <Trash2 className="h-4 w-4" />
                     </button>

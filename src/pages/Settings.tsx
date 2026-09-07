@@ -1,6 +1,7 @@
 import React from "react";
 import {
   AlertTriangle,
+  BookOpen,
   Check,
   FileText,
   GraduationCap,
@@ -15,6 +16,7 @@ import {
   Upload,
   Users,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { SCHOOL_ROLES, isSchoolRole, type SchoolRole } from "../../shared/permissions";
 import {
   DEFAULT_REPORT_SETTINGS,
@@ -25,16 +27,18 @@ import {
 } from "../../shared/reportSettings";
 import { useApp } from "../context/AppContext";
 import { useToast } from "../context/ToastContext";
-import { apiRequest } from "../lib/api";
+import { apiFieldErrors, apiRequest } from "../lib/api";
 import { cn, formatCurrency } from "../lib/utils";
-import type { SchoolSettings, User } from "../types";
+import type { SchoolSettings, Subject, User } from "../types";
+import { AccountDialog } from "../components/accounts/AccountDialog";
 
-type SettingsSection = "profile" | "reports" | "fees" | "grading" | "access";
+type SettingsSection = "profile" | "reports" | "fees" | "grading" | "subjects" | "access";
 type EditableSettings = SchoolSettings & {
   address: string;
   phone: string;
   email: string;
   academicYear: string;
+  currentTerm: string;
   currency: string;
   classFees: Record<string, number>;
   gradingScale: NonNullable<SchoolSettings["gradingScale"]>;
@@ -86,6 +90,7 @@ const sectionOptions: Array<{ id: SettingsSection; label: string; icon: React.El
   { id: "reports", label: "Reports and identity", icon: FileText },
   { id: "fees", label: "Class fees", icon: ImageIcon },
   { id: "grading", label: "Grading scale", icon: GraduationCap },
+  { id: "subjects", label: "Subjects", icon: BookOpen },
   { id: "access", label: "Access control", icon: ShieldCheck },
 ];
 
@@ -112,6 +117,7 @@ function editableSettings(source: SchoolSettings): EditableSettings {
     phone: source.phone || "",
     email: source.email || "",
     academicYear: source.academicYear || "2026/2027",
+    currentTerm: source.currentTerm || "Term 1",
     currency: source.currency || "UGX",
     classFees: source.classFees || {},
     gradingScale: source.gradingScale || [],
@@ -255,7 +261,7 @@ function TeacherScopeEditor({
 }
 
 export default function Settings() {
-  const { currentUser, schoolSettings, setSchoolSettings, updateUser, users } = useApp();
+  const { addSubject, currentUser, deactivateSubject, schoolSettings, setSchoolSettings, subjects, updateSubject, users } = useApp();
   const toast = useToast();
   const [activeSection, setActiveSection] = React.useState<SettingsSection>("profile");
   const [localSettings, setLocalSettings] = React.useState<EditableSettings>(() => editableSettings(schoolSettings));
@@ -266,9 +272,14 @@ export default function Settings() {
   const [references, setReferences] = React.useState<AccessReferences | null>(null);
   const [readiness, setReadiness] = React.useState<AccessReadiness | null>(null);
   const [accessLoading, setAccessLoading] = React.useState(false);
-  const [roleUpdating, setRoleUpdating] = React.useState<string | null>(null);
   const [linking, setLinking] = React.useState<string | null>(null);
   const [linkOverrides, setLinkOverrides] = React.useState<Record<string, string>>({});
+  const [accountDialogOpen, setAccountDialogOpen] = React.useState(false);
+  const [editingAccount, setEditingAccount] = React.useState<User | null>(null);
+  const [editingSubjectId, setEditingSubjectId] = React.useState<string | null>(null);
+  const [subjectDraft, setSubjectDraft] = React.useState({ name: "", code: "", schoolType: schoolSettings.level, classLevel: "" });
+  const [subjectErrors, setSubjectErrors] = React.useState<Record<string, string[]>>({});
+  const [subjectSaving, setSubjectSaving] = React.useState(false);
 
   React.useEffect(() => setLocalSettings(editableSettings(schoolSettings)), [schoolSettings]);
 
@@ -327,7 +338,6 @@ export default function Settings() {
         logo = uploaded.url;
         logoVariants = uploaded.variants;
       }
-      await apiRequest("/api/settings/reports", { method: "PUT", json: localSettings.reportSettings });
       await setSchoolSettings({ ...localSettings, logo, logoVariants, reportSettings: localSettings.reportSettings });
       setPendingLogo(null);
       toast.success("School settings saved.");
@@ -358,19 +368,37 @@ export default function Settings() {
     ? user.roles
     : isSchoolRole(user.role) ? [user.role] : [];
 
-  const toggleRole = async (user: User, role: SchoolRole) => {
-    const currentRoles = rolesFor(user);
-    const nextRoles = currentRoles.includes(role) ? currentRoles.filter((item) => item !== role) : [...currentRoles, role];
-    if (!nextRoles.length || user.id === currentUser?.id) return;
-    setRoleUpdating(user.id);
+  const editSubject = (subject: Subject) => {
+    setEditingSubjectId(subject.id);
+    setSubjectDraft({
+      name: subject.name,
+      code: subject.code || "",
+      schoolType: subject.schoolType || localSettings.level,
+      classLevel: subject.classLevel || "",
+    });
+    setSubjectErrors({});
+  };
+
+  const resetSubjectDraft = () => {
+    setEditingSubjectId(null);
+    setSubjectDraft({ name: "", code: "", schoolType: localSettings.level, classLevel: "" });
+    setSubjectErrors({});
+  };
+
+  const saveSubject = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSubjectSaving(true);
+    setSubjectErrors({});
     try {
-      await updateUser(user.id, { roles: nextRoles });
-      setReferences(null);
-      toast.success("School roles updated.");
+      if (editingSubjectId) await updateSubject(editingSubjectId, subjectDraft);
+      else await addSubject(subjectDraft);
+      toast.success(editingSubjectId ? "Subject updated." : "Subject added.");
+      resetSubjectDraft();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to update roles");
+      setSubjectErrors(apiFieldErrors(error));
+      toast.error(error instanceof Error ? error.message : "Unable to save subject");
     } finally {
-      setRoleUpdating(null);
+      setSubjectSaving(false);
     }
   };
 
@@ -518,11 +546,38 @@ export default function Settings() {
           )}
 
           {activeSection === "fees" && (
-            <div className="app-panel space-y-6"><div><h2 id="settings-fees" className="text-lg font-semibold text-slate-950">Class fees</h2><p className="mt-1 text-sm text-slate-500">Standard term fee by class.</p></div><div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">{localSettings.classes.map((className) => <label key={className} className="rounded-lg border border-slate-200 p-4"><span className="mb-2 block text-sm font-semibold text-slate-800">{className}</span><span className="relative block"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-500">{localSettings.currency}</span><input type="number" min={0} className="app-input pl-14" value={localSettings.classFees[className] || 0} onChange={(event) => setLocalSettings((value) => ({ ...value, classFees: { ...value.classFees, [className]: Number(event.target.value) || 0 } }))} /></span><span className="mt-2 block text-xs text-slate-500">{formatCurrency(localSettings.classFees[className] || 0, localSettings.currency)}</span></label>)}</div><div className="grid grid-cols-1 gap-4 border-t border-slate-200 pt-5 sm:grid-cols-2"><label><span className="mb-2 block text-sm font-medium text-slate-700">Currency</span><input className="app-input" value={localSettings.currency} onChange={(event) => setLocalSettings((value) => ({ ...value, currency: event.target.value.toUpperCase() }))} /></label><label><span className="mb-2 block text-sm font-medium text-slate-700">Assessment model</span><select className="app-select" value={localSettings.assessmentModel} onChange={(event) => setLocalSettings((value) => ({ ...value, assessmentModel: event.target.value as EditableSettings["assessmentModel"] }))}><option value="percentage_100">Percentage (0-100)</option><option value="competency_3">Competency (0-3)</option></select></label><label><span className="mb-2 block text-sm font-medium text-slate-700">Bank name</span><input className="app-input" value={localSettings.bankName} onChange={(event) => setLocalSettings((value) => ({ ...value, bankName: event.target.value }))} /></label><label><span className="mb-2 block text-sm font-medium text-slate-700">Bank account</span><input className="app-input" value={localSettings.bankAccount} onChange={(event) => setLocalSettings((value) => ({ ...value, bankAccount: event.target.value }))} /></label><label><span className="mb-2 block text-sm font-medium text-slate-700">School pay code</span><input className="app-input" value={localSettings.payCode} onChange={(event) => setLocalSettings((value) => ({ ...value, payCode: event.target.value }))} /></label></div></div>
+            <div className="app-panel space-y-6">
+              <div><h2 id="settings-fees" className="text-lg font-semibold text-slate-950">Fee defaults</h2><p className="mt-1 text-sm text-slate-500">Choose the active reporting period and payment currency.</p></div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <label><span className="mb-2 block text-sm font-medium text-slate-700">Current term</span><select className="app-select" value={localSettings.currentTerm} onChange={(event) => setLocalSettings((value) => ({ ...value, currentTerm: event.target.value }))}><option>Term 1</option><option>Term 2</option><option>Term 3</option></select></label>
+                <label><span className="mb-2 block text-sm font-medium text-slate-700">Academic year</span><input className="app-input" value={localSettings.academicYear} onChange={(event) => setLocalSettings((value) => ({ ...value, academicYear: event.target.value }))} /></label>
+                <label><span className="mb-2 block text-sm font-medium text-slate-700">Currency</span><input className="app-input" value={localSettings.currency} onChange={(event) => setLocalSettings((value) => ({ ...value, currency: event.target.value.toUpperCase() }))} /></label>
+              </div>
+              <div className="grid grid-cols-1 gap-4 border-t border-slate-200 pt-5 sm:grid-cols-2"><label><span className="mb-2 block text-sm font-medium text-slate-700">Bank name</span><input className="app-input" value={localSettings.bankName} onChange={(event) => setLocalSettings((value) => ({ ...value, bankName: event.target.value }))} /></label><label><span className="mb-2 block text-sm font-medium text-slate-700">Bank account</span><input className="app-input" value={localSettings.bankAccount} onChange={(event) => setLocalSettings((value) => ({ ...value, bankAccount: event.target.value }))} /></label><label><span className="mb-2 block text-sm font-medium text-slate-700">School pay code</span><input className="app-input" value={localSettings.payCode} onChange={(event) => setLocalSettings((value) => ({ ...value, payCode: event.target.value }))} /></label></div>
+              <div className="flex flex-col gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-blue-900">Class charges are managed as term-specific fee structures.</p><Link to="/fees" className="app-button-primary shrink-0">Open fee configuration</Link></div>
+            </div>
           )}
 
           {activeSection === "grading" && (
             <div className="app-panel space-y-6"><div><h2 id="settings-grading" className="text-lg font-semibold text-slate-950">Grading scale</h2><p className="mt-1 text-sm text-slate-500">Ordered score boundaries and report comments.</p></div><div className="grid grid-cols-1 gap-3 rounded-lg bg-slate-50 p-4 sm:grid-cols-[7rem_8rem_minmax(0,1fr)_auto]"><label><span className="mb-1 block text-xs font-semibold text-slate-500">Minimum</span><input type="number" min={0} max={100} className="app-input" value={newGrade.min} onChange={(event) => setNewGrade((value) => ({ ...value, min: Number(event.target.value) || 0 }))} /></label><label><span className="mb-1 block text-xs font-semibold text-slate-500">Grade</span><input className="app-input" value={newGrade.grade} onChange={(event) => setNewGrade((value) => ({ ...value, grade: event.target.value }))} /></label><label><span className="mb-1 block text-xs font-semibold text-slate-500">Comment</span><input className="app-input" value={newGrade.comment} onChange={(event) => setNewGrade((value) => ({ ...value, comment: event.target.value }))} /></label><button type="button" onClick={addGrade} className="app-button-primary min-h-11 self-end"><Plus className="h-4 w-4" /> Add</button></div><div className="divide-y divide-slate-200 rounded-lg border border-slate-200">{localSettings.gradingScale.map((grade, index) => <div key={`${grade.grade}-${grade.min}`} className="grid grid-cols-[4rem_minmax(0,1fr)_2.75rem] items-center gap-3 p-3 sm:grid-cols-[5rem_6rem_minmax(0,1fr)_2.75rem]"><strong className="text-sm text-blue-700">{grade.min}%</strong><span className="hidden text-sm font-semibold text-slate-900 sm:block">{grade.grade}</span><span className="min-w-0 text-sm text-slate-600"><strong className="mr-2 sm:hidden">{grade.grade}</strong>{grade.comment}</span><button type="button" className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600" onClick={() => setLocalSettings((value) => ({ ...value, gradingScale: value.gradingScale.filter((_, itemIndex) => itemIndex !== index) }))} aria-label={`Remove ${grade.grade}`}><Trash2 className="h-4 w-4" /></button></div>)}{!localSettings.gradingScale.length && <p className="p-6 text-center text-sm text-slate-500">No grading bands configured.</p>}</div></div>
+          )}
+
+          {activeSection === "subjects" && (
+            <div className="space-y-6">
+              <form onSubmit={saveSubject} className="app-panel space-y-5" noValidate>
+                <div><h2 id="settings-subjects" className="text-lg font-semibold text-slate-950">Academic subjects</h2><p className="mt-1 text-sm text-slate-500">One shared subject list is used for marks, timetables, and teacher scopes.</p></div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label><span className="mb-2 block text-sm font-medium text-slate-700">Subject name</span><input className="app-input" required value={subjectDraft.name} onChange={(event) => setSubjectDraft((value) => ({ ...value, name: event.target.value }))} />{subjectErrors.name?.[0] && <span className="mt-1 block text-xs text-rose-700">{subjectErrors.name[0]}</span>}</label>
+                  <label><span className="mb-2 block text-sm font-medium text-slate-700">Code</span><input className="app-input" required value={subjectDraft.code} onChange={(event) => setSubjectDraft((value) => ({ ...value, code: event.target.value.toUpperCase() }))} />{subjectErrors.code?.[0] && <span className="mt-1 block text-xs text-rose-700">{subjectErrors.code[0]}</span>}</label>
+                  <label><span className="mb-2 block text-sm font-medium text-slate-700">School level</span><select className="app-select" value={subjectDraft.schoolType} onChange={(event) => setSubjectDraft((value) => ({ ...value, schoolType: event.target.value as "Primary" | "Secondary" }))}><option>Primary</option><option>Secondary</option></select></label>
+                  <label><span className="mb-2 block text-sm font-medium text-slate-700">Class range</span><input className="app-input" placeholder="For example P.1-P.7" value={subjectDraft.classLevel} onChange={(event) => setSubjectDraft((value) => ({ ...value, classLevel: event.target.value }))} /></label>
+                </div>
+                <div className="flex flex-wrap justify-end gap-2">{editingSubjectId && <button type="button" className="app-button-secondary" onClick={resetSubjectDraft}>Cancel edit</button>}<button type="submit" className="app-button-primary" disabled={subjectSaving}><Plus className="h-4 w-4" />{subjectSaving ? "Saving..." : editingSubjectId ? "Update subject" : "Add subject"}</button></div>
+              </form>
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                <div className="divide-y divide-slate-200">{subjects.map((subject) => <div key={subject.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold text-slate-950">{subject.name}</h3><span className={cn("app-badge", subject.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600")}>{subject.active ? "Active" : "Inactive"}</span></div><p className="mt-1 text-sm text-slate-500">{subject.code || "No code"}{subject.schoolType ? ` / ${subject.schoolType}` : ""}{subject.classLevel ? ` / ${subject.classLevel}` : ""}</p></div><div className="flex gap-2"><button type="button" className="app-button-secondary" onClick={() => editSubject(subject)}>Edit</button><button type="button" className="app-button-secondary" onClick={() => void (subject.active ? deactivateSubject(subject.id) : updateSubject(subject.id, { active: true }))}>{subject.active ? "Deactivate" : "Reactivate"}</button></div></div>)}{!subjects.length && <div className="app-empty-state">No subjects configured.</div>}</div>
+              </div>
+            </div>
           )}
 
           {activeSection === "access" && (
@@ -544,8 +599,7 @@ export default function Settings() {
                 const linkedStaff = linkOverrides[`staff:${user.id}`] || user.staffId || "";
                 return (
                   <article key={user.id} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-slate-950">{user.name}</h3><p className="truncate text-xs text-slate-500">{user.email}</p></div>{user.platformRole && <span className="app-badge self-start bg-slate-900 text-white">Platform {user.platformRole.replace("_", " ")}</span>}</div>
-                    <fieldset className="mt-4" disabled={roleUpdating === user.id || user.id === currentUser?.id}><legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">School roles</legend><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">{SCHOOL_ROLES.map((role) => { const checked = userRoles.includes(role); return <label key={role} className={cn("flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 text-xs font-medium", checked ? "border-blue-300 bg-blue-50 text-blue-800" : "border-slate-200 text-slate-600", (roleUpdating === user.id || user.id === currentUser?.id) && "cursor-not-allowed opacity-60")}><input type="checkbox" checked={checked} onChange={() => void toggleRole(user, role)} className="h-4 w-4 accent-blue-600" /><span>{roleLabels[role]}</span></label>; })}</div>{user.id === currentUser?.id && <p className="mt-2 text-xs text-slate-500">Your own school roles require another administrator.</p>}</fieldset>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-slate-950">{user.name}</h3><p className="truncate text-xs text-slate-500">{user.email}</p><div className="mt-2 flex flex-wrap gap-1.5">{userRoles.map((role) => <span key={role} className="app-badge bg-blue-50 text-blue-800">{roleLabels[role]}</span>)}{user.platformRole && <span className="app-badge bg-slate-900 text-white">Platform {user.platformRole.replace("_", " ")}</span>}</div></div><button type="button" className="app-button-secondary shrink-0" onClick={() => { setEditingAccount(user); setAccountDialogOpen(true); }}>Edit account</button></div>
                     <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
                       {userRoles.includes("parent") && <label><span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600"><Link2 className="h-3.5 w-3.5" /> Parent record</span><select className="app-select min-h-11" value={linkedParent} disabled={linking === `parent:${user.id}`} onChange={(event) => void linkAccount(user, "parent", event.target.value)}><option value="">Select parent</option>{references.parents.map((item) => <option key={item.id} value={item.id}>{item.name}{item.detail ? ` / ${item.detail}` : ""}</option>)}</select></label>}
                       {userRoles.includes("student") && <label><span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600"><Link2 className="h-3.5 w-3.5" /> Student record</span><select className="app-select min-h-11" value={linkedStudent} disabled={linking === `student:${user.id}`} onChange={(event) => void linkAccount(user, "student", event.target.value)}><option value="">Select student</option>{references.students.map((item) => <option key={item.id} value={item.id}>{item.name}{item.detail ? ` / ${item.detail}` : ""}</option>)}</select></label>}
@@ -559,6 +613,7 @@ export default function Settings() {
           )}
         </section>
       </div>
+      <AccountDialog open={accountDialogOpen} account={editingAccount} onClose={() => { setAccountDialogOpen(false); setEditingAccount(null); }} onSaved={() => { setReferences(null); void loadAccessData(); }} />
     </div>
   );
 }

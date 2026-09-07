@@ -8,7 +8,6 @@ import {
   FileText,
   Filter,
   Lock,
-  Plus,
   Save,
   Search,
   ShieldCheck,
@@ -29,20 +28,6 @@ type Draft = {
   examScore: string;
   teacherInitials: string;
 };
-
-const DEFAULT_SUBJECTS = [
-  "Mathematics",
-  "English",
-  "Biology",
-  "Chemistry",
-  "Physics",
-  "History",
-  "Geography",
-  "CRE",
-  "Agriculture",
-  "Computer Studies",
-  "Entrepreneurship",
-];
 
 const TERMS = ["Term 1", "Term 2", "Term 3"];
 
@@ -105,22 +90,23 @@ function gradeBadge(score: number | null) {
 }
 
 export default function Grades() {
-  const { students, marks, addMark, updateMark, schoolSettings, currentUser } = useApp();
+  const { students, subjects: subjectRecords, marks, addMark, updateMark, schoolSettings, currentUser } = useApp();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<"entry" | "reports" | "analytics">("entry");
   const [selectedClass, setSelectedClass] = useState(schoolSettings.classes[0] || "");
-  const [selectedSubject, setSelectedSubject] = useState("Mathematics");
-  const [selectedTerm, setSelectedTerm] = useState("Term 1");
+  const [selectedSubject, setSelectedSubject] = useState("");
+  const [selectedTerm, setSelectedTerm] = useState(schoolSettings.currentTerm || "Term 1");
   const [selectedYear, setSelectedYear] = useState(schoolSettings.academicYear || "2026/2027");
   const [searchQuery, setSearchQuery] = useState("");
   const [mobileStudentIndex, setMobileStudentIndex] = useState(0);
-  const [customSubject, setCustomSubject] = useState("");
-  const [extraSubjects, setExtraSubjects] = useState<string[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const assessmentModel = schoolSettings.assessmentModel || "percentage_100";
   const courseworkMax = assessmentModel === "competency_3" ? 3 : 100;
 
-  const subjects = useMemo(() => Array.from(new Set([...DEFAULT_SUBJECTS, ...marks.map((mark) => mark.subject), ...extraSubjects])).sort(), [extraSubjects, marks]);
+  const subjects = useMemo(() => Array.from(new Set([
+    ...subjectRecords.filter((subject) => subject.active).map((subject) => subject.name),
+    ...marks.map((mark) => mark.subject),
+  ])).sort(), [marks, subjectRecords]);
   const selectedMarks = marks.filter((mark) => mark.subject === selectedSubject && mark.term === selectedTerm && mark.year === selectedYear);
   const filteredStudents = students.filter((student) => {
     const query = searchQuery.toLowerCase();
@@ -131,6 +117,10 @@ export default function Grades() {
   React.useEffect(() => {
     setMobileStudentIndex((current) => Math.min(current, Math.max(0, filteredStudents.length - 1)));
   }, [filteredStudents.length, searchQuery, selectedClass]);
+
+  React.useEffect(() => {
+    if ((!selectedSubject || !subjects.includes(selectedSubject)) && subjects[0]) setSelectedSubject(subjects[0]);
+  }, [selectedSubject, subjects]);
 
   const studentMark = (studentId: string) => selectedMarks.find((mark) => mark.studentId === studentId);
   const canUnlock = currentUser?.role === "admin";
@@ -144,14 +134,6 @@ export default function Grades() {
         [field]: value,
       },
     }));
-  };
-
-  const addCustomSubject = () => {
-    const subject = customSubject.trim();
-    if (!subject) return;
-    setExtraSubjects((current) => (current.includes(subject) ? current : [...current, subject]));
-    setSelectedSubject(subject);
-    setCustomSubject("");
   };
 
   const handleSaveMarks = async () => {
@@ -283,13 +265,7 @@ export default function Grades() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 rounded-3xl bg-gray-50 p-4 sm:flex-row sm:items-center">
-          <input className="min-w-0 flex-1 rounded-2xl border border-gray-100 bg-white px-4 py-3 text-sm font-bold text-gray-800 outline-none focus:ring-4 focus:ring-indigo-100" placeholder="Add a custom subject for this class..." value={customSubject} onChange={(event) => setCustomSubject(event.target.value)} />
-          <button onClick={addCustomSubject} className="flex items-center justify-center gap-2 rounded-2xl bg-gray-900 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-gray-800">
-            <Plus className="h-4 w-4" />
-            Add Subject
-          </button>
-        </div>
+        {!subjects.length && <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Add an active subject in Settings before entering marks.</p>}
       </div>
 
       {activeTab === "entry" && (

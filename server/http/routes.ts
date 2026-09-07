@@ -109,7 +109,7 @@ export function registerBackendRoutes(app: Express, genAI: GoogleGenAI | null) {
     requireTenant(authService),
     asyncHandler(async (req, res) => {
       const input = reportQuerySchema.parse(req.query);
-      res.json(await reportingService.getStudentStatus(req.tenant!, req.params.studentId, input.term, input.year));
+      res.json(await reportingService.getStudentStatus(req.currentUser!, req.tenant!, req.params.studentId, input.term, input.year));
     }),
   );
 
@@ -212,7 +212,7 @@ export function registerBackendRoutes(app: Express, genAI: GoogleGenAI | null) {
     requireRole("admin", "accountant", "teacher", "parent", "student"),
     asyncHandler(async (req, res) => {
       const className = typeof req.query.className === "string" ? req.query.className : undefined;
-      res.json(await financeService.listBalances(req.tenant!, className));
+      res.json(await financeService.listBalances(req.currentUser!, req.tenant!, { className }));
     }),
   );
 

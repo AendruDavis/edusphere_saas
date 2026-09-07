@@ -41,23 +41,21 @@ function toneClasses(color: string) {
 }
 
 export default function Dashboard() {
-  const { schoolSettings, currentUser, students, users, healthRecords, vehicles, timetableEntries, getClassFees } = useApp();
+  const { schoolSettings, currentUser, students, users, healthRecords, vehicles, timetableEntries, feeBalances, can } = useApp();
+  const canViewFees = can("fees");
 
   const totalOutstandingFees = React.useMemo(() => {
-    return students.reduce((sum, student) => {
-      const expected = getClassFees(student.class);
-      return sum + Math.max(0, expected - student.totalFeesPaid);
-    }, 0);
-  }, [students, getClassFees]);
+    return feeBalances.reduce((sum, balance) => sum + balance.outstandingAmount, 0);
+  }, [feeBalances]);
 
   const stats = React.useMemo(
     () => [
       { label: "Students", value: students.length.toLocaleString(), icon: GraduationCap, trend: "+12%", color: "blue", href: "/students" },
       { label: "Staff Accounts", value: users.length.toLocaleString(), icon: Users, trend: "+3%", color: "emerald", href: "/staff" },
-      { label: "Outstanding Fees", value: formatCurrency(totalOutstandingFees, schoolSettings.currency || "UGX"), icon: Wallet, trend: "+8%", color: "amber", href: "/fees" },
+      ...(canViewFees ? [{ label: "Outstanding Fees", value: formatCurrency(totalOutstandingFees, schoolSettings.currency || "UGX"), icon: Wallet, trend: "Current period", color: "amber", href: "/fees" }] : []),
       { label: "Sick Bay Cases", value: healthRecords.filter((record) => record.status === "sick").length.toLocaleString(), icon: Activity, trend: "-0.5%", color: "rose", href: "/sick-bay" },
     ],
-    [students.length, users.length, totalOutstandingFees, schoolSettings.currency, healthRecords],
+    [students.length, users.length, totalOutstandingFees, schoolSettings.currency, healthRecords, canViewFees],
   );
 
   return (

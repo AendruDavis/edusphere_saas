@@ -14,6 +14,7 @@ export type ResourceKey =
   | "expenses"
   | "leaveRequests"
   | "feeStructures"
+  | "subjects"
   | "attendanceRecords"
   | "vehicles"
   | "routes"
@@ -50,6 +51,7 @@ export const RESOURCE_CONFIGS: Record<ResourceKey, ResourceConfig> = {
   expenses: resource("expenses", "expenses", "finance"),
   leaveRequests: resource("leaveRequests", "leave_requests", "staff"),
   feeStructures: resource("feeStructures", "fee_structures", "fees"),
+  subjects: resource("subjects", "subjects", "academics"),
   attendanceRecords: resource("attendanceRecords", "attendance_records", "attendance"),
   vehicles: resource("vehicles", "vehicles", "transport"),
   routes: resource("routes", "routes", "transport"),

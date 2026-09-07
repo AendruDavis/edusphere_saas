@@ -20,8 +20,24 @@ function tableName(table: string) {
     .join(".");
 }
 
-function preparePayload<T extends RecordData>(payload: T) {
-  return cleanUndefined(payload);
+const RESOURCE_JSON_FIELDS: Record<string, ReadonlySet<string>> = {
+  fee_structures: new Set(["items"]),
+  vehicles: new Set(["lastLocation"]),
+  routes: new Set(["stops"]),
+  dormitories: new Set(["rooms"]),
+  dorm_rooms: new Set(["occupants"]),
+};
+
+function isResourceJsonField(table: string, key: string) {
+  return RESOURCE_JSON_FIELDS[table]?.has(key) ?? false;
+}
+
+function preparePayload<T extends RecordData>(table: string, payload: T) {
+  const clean = cleanUndefined(payload);
+  return Object.fromEntries(Object.entries(clean).map(([key, value]) => [
+    key,
+    isResourceJsonField(table, key) ? JSON.stringify(value) : value,
+  ])) as T;
 }
 
 const SCHOOL_SETTINGS_JSON_FIELDS = new Set<string>([
@@ -89,10 +105,10 @@ export class PostgresRepository {
   }
 
   async create<T extends RecordData>(table: string, payload: T, schoolId: string) {
-    const clean = preparePayload({ ...payload, schoolId });
+    const clean = preparePayload(table, { ...payload, schoolId });
     const keys = Object.keys(clean);
     const columns = keys.map(quoteIdent).join(", ");
-    const placeholders = keys.map((_, index) => `$${index + 1}`).join(", ");
+    const placeholders = keys.map((key, index) => `$${index + 1}${isResourceJsonField(table, key) ? "::jsonb" : ""}`).join(", ");
     const values = keys.map((key) => clean[key]);
     const result = await query(
       `insert into ${tableName(table)} (${columns}) values (${placeholders}) returning *`,
@@ -102,9 +118,9 @@ export class PostgresRepository {
   }
 
   async update<T extends RecordData>(table: string, id: string, payload: T, schoolId: string) {
-    const clean = preparePayload({ ...payload, updatedAt: new Date().toISOString() });
+    const clean = preparePayload(table, { ...payload, updatedAt: new Date().toISOString() });
     const keys = Object.keys(clean);
-    const assignments = keys.map((key, index) => `${quoteIdent(key)} = $${index + 1}`).join(", ");
+    const assignments = keys.map((key, index) => `${quoteIdent(key)} = $${index + 1}${isResourceJsonField(table, key) ? "::jsonb" : ""}`).join(", ");
     const values = keys.map((key) => clean[key]);
     const result = await query(
       `update ${tableName(table)} set ${assignments} where id = $${keys.length + 1} and "schoolId" = $${keys.length + 2} returning *`,
@@ -119,7 +135,7 @@ export class PostgresRepository {
   }
 
   async upsertSettings(payload: RecordData, schoolId: string) {
-    const clean = preparePayload({ id: true, ...payload, schoolId, updatedAt: new Date().toISOString() });
+    const clean = cleanUndefined({ id: true, ...payload, schoolId, updatedAt: new Date().toISOString() });
     const keys = Object.keys(clean);
     const columns = keys.map(quoteIdent).join(", ");
     const placeholders = keys
@@ -144,7 +160,7 @@ export class PostgresRepository {
 
   async listUsers(schoolId: string) {
     const result = await query(
-      `select u.id, u.name, u.email, sm.role, u.photo, u.dept, u."createdAt", u."updatedAt",
+      `select u.id, u.name, u.email, sm.role, u.photo, u.dept, u."mustChangePassword", u."passwordChangedAt", u."createdAt", u."updatedAt",
          coalesce(array_agg(smr.role order by smr.role) filter (where smr.role is not null), array[sm.role]) as roles,
          pul."parentId", sul."studentId", stul."staffId"
        from school_memberships sm

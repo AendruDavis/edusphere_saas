@@ -39,7 +39,7 @@ type StudentStatusSummary = {
 export default function StudentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { students, borrowings, healthRecords, schoolSettings, getClassFees, transactions } = useApp();
+  const { students, borrowings, healthRecords, schoolSettings, feePeriod, getStudentFeeBalance, transactions, can } = useApp();
   const [activeTab, setActiveTab] = useState<"overview" | "fees" | "library" | "health">("overview");
   const [statusSummary, setStatusSummary] = useState<StudentStatusSummary | null>(null);
 
@@ -49,18 +49,20 @@ export default function StudentDetail() {
   const studentHealth = healthRecords.filter(h => h.studentId === id);
   const studentPayments = transactions.filter(t => t.type === "income" && t.studentId === id);
   
-  const expectedFees = foundStudent ? getClassFees(foundStudent.class) : 0;
-  const paidFees = foundStudent ? foundStudent.totalFeesPaid : 0;
-  const balanceFees = expectedFees - paidFees;
+  const feeBalance = id ? getStudentFeeBalance(id) : undefined;
+  const canViewFees = can("fees");
+  const expectedFees = feeBalance?.standardFee || 0;
+  const paidFees = feeBalance?.paidAmount || 0;
+  const balanceFees = feeBalance?.outstandingAmount || 0;
 
   React.useEffect(() => {
     if (!id) return;
     apiRequest<StudentStatusSummary>(
-      `/api/students/${id}/status-summary?term=${encodeURIComponent("Term 1")}&year=${encodeURIComponent(schoolSettings.academicYear || "2026/2027")}`,
+      `/api/students/${id}/status-summary?term=${encodeURIComponent(feePeriod.term)}&year=${encodeURIComponent(feePeriod.year)}`,
     )
       .then(setStatusSummary)
       .catch(() => setStatusSummary(null));
-  }, [id, schoolSettings.academicYear]);
+  }, [id, feePeriod.term, feePeriod.year]);
 
   const student = {
     id: foundStudent?.id || id,
@@ -116,7 +118,7 @@ export default function StudentDetail() {
               </div>
               <div className="flex items-center gap-3">
                 <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">{student.reg} • {student.class}</p>
-                {student.fees.balance > 0 && (
+                {canViewFees && student.fees.balance > 0 && (
                   <span className="px-2 py-0.5 bg-rose-50 text-rose-600 text-[9px] font-black uppercase rounded-full tracking-wider border border-rose-100 flex items-center gap-1">
                     <Receipt className="w-3 h-3" />
                     Balance: {formatCurrency(student.fees.balance || 0, schoolSettings.currency || "UGX")}
@@ -139,7 +141,7 @@ export default function StudentDetail() {
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: "Fees Balance", value: formatCurrency(statusSummary?.feesBalance ?? student.fees.balance, schoolSettings.currency || "UGX"), dot: "bg-rose-500" },
+          ...(canViewFees ? [{ label: "Fees Balance", value: formatCurrency(student.fees.balance, schoolSettings.currency || "UGX"), dot: "bg-rose-500" }] : []),
           { label: "Books Borrowed", value: String(statusSummary?.booksBorrowed ?? studentBorrowings.filter((item) => item.status === "active").length), dot: "bg-amber-500" },
           { label: "Sickness Status", value: statusSummary?.sicknessStatus ?? (studentHealth[0]?.status || "Cleared"), dot: "bg-emerald-500" },
           { label: "Days Attended", value: `${statusSummary?.daysAttended ?? 0}/${statusSummary?.expectedSchoolDays || "-"}`, dot: "bg-blue-500" },
@@ -161,7 +163,7 @@ export default function StudentDetail() {
         label="Student record section"
         options={[
           { value: "overview", label: "Overview" },
-          { value: "fees", label: "Fees" },
+          ...(canViewFees ? [{ value: "fees" as const, label: "Fees" }] : []),
           { value: "library", label: "Library" },
           { value: "health", label: "Health" },
         ]}
@@ -227,7 +229,7 @@ export default function StudentDetail() {
 
           {/* Quick Stats */}
           <div className="space-y-6">
-            <div className="space-y-6 rounded-lg bg-blue-600 p-4 text-white shadow-lg sm:p-6">
+            {canViewFees && <div className="space-y-6 rounded-lg bg-blue-600 p-4 text-white shadow-lg sm:p-6">
               <h4 className="text-xs font-bold uppercase tracking-widest text-blue-200">Fees Balance</h4>
               <div className="flex items-end gap-2">
                 <span className="break-all text-3xl font-black sm:text-4xl">{formatCurrency(student.fees.balance, schoolSettings.currency || "UGX")}</span>
@@ -236,13 +238,13 @@ export default function StudentDetail() {
               <div className="h-2 w-full bg-blue-800 rounded-full overflow-hidden">
                 <div 
                   className="h-full bg-white transition-all shadow-sm" 
-                  style={{ width: `${(student.fees.paid / student.fees.total) * 100}%` }}
+                  style={{ width: `${student.fees.total > 0 ? Math.min(100, (student.fees.paid / student.fees.total) * 100) : 0}%` }}
                 />
               </div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-blue-200">
-                {Math.round((student.fees.paid / student.fees.total) * 100)}% Paid ({formatCurrency(student.fees.paid, schoolSettings.currency || "UGX")} / {formatCurrency(student.fees.total, schoolSettings.currency || "UGX")})
+                {student.fees.total > 0 ? Math.round((student.fees.paid / student.fees.total) * 100) : 0}% Paid ({formatCurrency(student.fees.paid, schoolSettings.currency || "UGX")} / {formatCurrency(student.fees.total, schoolSettings.currency || "UGX")})
               </p>
-            </div>
+            </div>}
 
             <div className="space-y-6 rounded-lg border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
               <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Library Brief</h4>

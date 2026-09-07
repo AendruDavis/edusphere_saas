@@ -4,6 +4,7 @@ import type { TenantContext } from "../domain/tenancy";
 import { query } from "../infrastructure/database";
 import { PostgresRepository, type RecordData } from "../infrastructure/postgresRepository";
 import { AccessControlService } from "./accessControlService";
+import { FinanceService } from "./financeService";
 import { getResourceConfig, SNAPSHOT_RESOURCES, type ResourceKey } from "./resourceRegistry";
 
 const DEFAULT_SETTINGS = {
@@ -16,6 +17,7 @@ const DEFAULT_SETTINGS = {
   classes: ["Baby Class", "Middle Class", "Top Class", "P.1", "P.2", "P.3", "P.4", "P.5", "P.6", "P.7"],
   currency: "UGX",
   academicYear: "2026/2027",
+  currentTerm: "Term 1",
   classFees: {},
   gradingScale: [],
 };
@@ -26,6 +28,7 @@ export class SnapshotService {
   constructor(
     private readonly repository = new PostgresRepository(),
     private readonly accessControl = new AccessControlService(),
+    private readonly financeService = new FinanceService(accessControl),
   ) {}
 
   async getSnapshot(user: AuthUser, tenant: TenantContext) {
@@ -33,6 +36,7 @@ export class SnapshotService {
       const config = getResourceConfig(resource);
       if (!rolesCan(tenant.roles, config.module, "read")) return [resource, []] as const;
       if (resource === "users") return [resource, await this.repository.listUsers(tenant.schoolId)] as const;
+      if (resource === "feeStructures") return [resource, await this.financeService.listFeeStructures(tenant)] as const;
       if (resource === "students") return [resource, await this.students(user, tenant)] as const;
       if (resource === "marks" && tenant.roles.includes("teacher") && !tenant.roles.includes("admin")) {
         return [resource, await this.teacherMarks(user, tenant)] as const;
@@ -50,11 +54,16 @@ export class SnapshotService {
       || notification.userId === "all"
       || (typeof notification.targetRole === "string" && tenant.roles.includes(notification.targetRole as never)),
     );
+    const feeData = rolesCan(tenant.roles, "fees", "read")
+      ? await this.financeService.listBalances(user, tenant)
+      : { term: settings?.currentTerm ?? DEFAULT_SETTINGS.currentTerm, year: settings?.academicYear ?? DEFAULT_SETTINGS.academicYear, currency: settings?.currency ?? DEFAULT_SETTINGS.currency, balances: [] };
 
     return {
       schoolSettings: settings ?? DEFAULT_SETTINGS,
       ...snapshot,
       notifications,
+      feeBalances: feeData.balances,
+      feePeriod: { term: feeData.term, year: feeData.year },
     };
   }
 

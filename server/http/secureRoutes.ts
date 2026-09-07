@@ -8,19 +8,36 @@ import {
   type PermissionAction,
   type SchoolRole,
 } from "../../shared/permissions";
-import { REPORT_TEMPLATE_PRESETS } from "../../shared/reportSettings";
 import { AccessControlService } from "../application/accessControlService";
 import { AppService } from "../application/appService";
 import { AuditService } from "../application/auditService";
 import { BrandingService } from "../application/brandingService";
+import { ConfigurationService } from "../application/configurationService";
+import { FinanceService } from "../application/financeService";
 import { getResourceConfig, type ResourceKey } from "../application/resourceRegistry";
 import { ReportingService } from "../application/reportingService";
 import { SnapshotService } from "../application/snapshotService";
+import { SubjectService } from "../application/subjectService";
 import { AppError } from "../domain/errors";
 import { AuthService } from "../infrastructure/authService";
 import { query, withTransaction } from "../infrastructure/database";
 import { StorageService } from "../infrastructure/storageService";
 import { asyncHandler, requireAuth, requirePlatformRole, requireRole, requireTenant } from "./middleware";
+import {
+  accountCreateSchema,
+  accountProfileSchema,
+  accountRolesSchema,
+  changePasswordSchema,
+  feeBalanceQuerySchema,
+  feePaymentSchema,
+  feeStructureCreateSchema,
+  feeStructureUpdateSchema,
+  passwordResetSchema,
+  reportSettingsSchema as configurationReportSettingsSchema,
+  schoolSettingsSchema as configurationSchoolSettingsSchema,
+  subjectCreateSchema,
+  subjectUpdateSchema,
+} from "./configurationSchemas";
 
 const schoolRoleSchema = z.enum(SCHOOL_ROLES);
 const loginSchema = z.object({
@@ -125,15 +142,32 @@ export function registerSecureRoutes(app: Express) {
   const storageService = new StorageService();
   const accessControl = new AccessControlService();
   const auditService = new AuditService();
+  const configurationService = new ConfigurationService();
+  const financeService = new FinanceService(accessControl);
+  const subjectService = new SubjectService();
 
   app.get("/api/public/schools/:slug/branding", asyncHandler(async (req, res) => {
-    res.set("Cache-Control", "public, max-age=300");
-    res.json(await brandingService.getPublicBranding(req.params.slug));
+    const branding = await brandingService.getPublicBranding(req.params.slug);
+    const etag = `W/"${branding.schoolId}-${branding.brandingVersion}"`;
+    res.set("Cache-Control", "public, max-age=0, must-revalidate");
+    res.set("ETag", etag);
+    if (req.header("if-none-match") === etag) {
+      res.status(304).end();
+      return;
+    }
+    res.json(branding);
   }));
 
   app.post("/api/auth/login", asyncHandler(async (req, res) => {
     const input = loginSchema.parse(req.body);
+    res.set("Cache-Control", "no-store");
     res.json(await authService.signIn(input.email, input.pass, input.schoolSlug));
+  }));
+
+  app.post("/api/auth/change-password", requireAuth(authService), asyncHandler(async (req, res) => {
+    const input = changePasswordSchema.parse(req.body);
+    res.set("Cache-Control", "no-store");
+    res.json(await authService.changePassword(req.currentUser!.id, input.currentPassword, input.newPassword));
   }));
 
   app.get("/api/auth/me", requireAuth(authService), asyncHandler(async (req, res) => {
@@ -199,23 +233,21 @@ export function registerSecureRoutes(app: Express) {
   }));
 
   app.put("/api/settings/school", requireAuth(authService), requireTenant(authService), requireRole("admin"), asyncHandler(async (req, res) => {
-    const input = schoolSettingsSchema.parse(req.body);
-    const saved = await appService.saveSettings(req.currentUser!, req.tenant!, input);
-    await auditService.record(req.currentUser!, req.tenant!, {
-      action: "settings.school_updated", entity: "school_settings", entityId: req.tenant!.schoolId,
-      riskLevel: "sensitive", summary: "Updated school settings",
-    });
-    res.json(saved);
+    const input = configurationSchoolSettingsSchema.parse(req.body);
+    res.json(await configurationService.saveSchoolSettings(req.currentUser!, req.tenant!, input));
   }));
 
   app.put("/api/settings/reports", requireAuth(authService), requireTenant(authService), requireRole("admin"), asyncHandler(async (req, res) => {
-    res.json(await brandingService.saveReportSettings(req.currentUser!, req.tenant!, reportSettingsSchema.parse(req.body)));
+    const saved = await configurationService.saveReportSettings(
+      req.currentUser!, req.tenant!, configurationReportSettingsSchema.parse(req.body),
+    );
+    res.json(saved.reportSettings);
   }));
 
   app.post("/api/storage/logo", requireAuth(authService), requireTenant(authService), requireRole("admin"), asyncHandler(async (req, res) => {
     const input = dataUrlSchema.parse(req.body);
     const uploaded = await storageService.uploadSchoolLogo(input.dataUrl, req.tenant!.schoolId);
-    await brandingService.saveLogo(req.currentUser!, req.tenant!, uploaded.url, uploaded.variants);
+    res.set("Cache-Control", "no-store");
     res.status(201).json(uploaded);
   }));
 
@@ -225,17 +257,82 @@ export function registerSecureRoutes(app: Express) {
   }));
 
   app.post("/api/users", requireAuth(authService), requireTenant(authService), requireRole("admin"), asyncHandler(async (req, res) => {
-    const input = userCreateSchema.parse(req.body);
+    const input = accountCreateSchema.parse(req.body);
+    res.set("Cache-Control", "no-store");
     res.status(201).json(await authService.createUser(input, req.tenant!.schoolId, req.currentUser!.id));
   }));
 
   app.patch("/api/users/:id", requireAuth(authService), requireTenant(authService), requireRole("admin"), asyncHandler(async (req, res) => {
     const id = z.string().uuid().parse(req.params.id);
-    res.json(await authService.updateUser(id, userUpdateSchema.parse(req.body), req.tenant!.schoolId, req.currentUser!.id));
+    res.json(await authService.updateUser(id, accountProfileSchema.parse(req.body), req.tenant!.schoolId, req.currentUser!.id));
+  }));
+
+  app.put("/api/users/:id/roles", requireAuth(authService), requireTenant(authService), requireRole("admin"), asyncHandler(async (req, res) => {
+    const id = z.string().uuid().parse(req.params.id);
+    const input = accountRolesSchema.parse(req.body);
+    res.json(await authService.replaceSchoolRoles(id, input.roles, req.tenant!.schoolId, req.currentUser!.id, input.confirmPassword));
+  }));
+
+  app.post("/api/users/:id/reset-password", requireAuth(authService), requireTenant(authService), requireRole("admin"), asyncHandler(async (req, res) => {
+    const id = z.string().uuid().parse(req.params.id);
+    const input = passwordResetSchema.parse(req.body);
+    res.set("Cache-Control", "no-store");
+    res.json(await authService.resetPassword(id, req.tenant!.schoolId, req.currentUser!.id, input.confirmPassword));
   }));
 
   app.delete("/api/users/:id", requireAuth(authService), requireTenant(authService), requireRole("admin"), asyncHandler(async (req, res) => {
-    res.json(await authService.removeUserFromSchool(z.string().uuid().parse(req.params.id), req.tenant!.schoolId, req.currentUser!.id));
+    const input = z.object({ confirmPassword: z.string().min(1).max(128).optional() }).parse(req.body ?? {});
+    res.json(await authService.removeUserFromSchool(
+      z.string().uuid().parse(req.params.id), req.tenant!.schoolId, req.currentUser!.id, input.confirmPassword,
+    ));
+  }));
+
+  app.get("/api/subjects", requireAuth(authService), requireTenant(authService), requireRole("admin", "teacher", "student", "parent"), asyncHandler(async (req, res) => {
+    res.json(await subjectService.list(req.tenant!));
+  }));
+
+  app.post("/api/subjects", requireAuth(authService), requireTenant(authService), requireRole("admin"), asyncHandler(async (req, res) => {
+    res.status(201).json(await subjectService.create(req.currentUser!, req.tenant!, subjectCreateSchema.parse(req.body)));
+  }));
+
+  app.put("/api/subjects/:id", requireAuth(authService), requireTenant(authService), requireRole("admin"), asyncHandler(async (req, res) => {
+    res.json(await subjectService.update(
+      req.currentUser!, req.tenant!, z.string().uuid().parse(req.params.id), subjectUpdateSchema.parse(req.body),
+    ));
+  }));
+
+  app.delete("/api/subjects/:id", requireAuth(authService), requireTenant(authService), requireRole("admin"), asyncHandler(async (req, res) => {
+    res.json(await subjectService.deactivate(req.currentUser!, req.tenant!, z.string().uuid().parse(req.params.id)));
+  }));
+
+  app.get("/api/fee-structures", requireAuth(authService), requireTenant(authService), requireRole("admin", "accountant", "parent", "student"), asyncHandler(async (req, res) => {
+    res.json(await financeService.listFeeStructures(req.tenant!, req.query.includeInactive === "true" && req.tenant!.roles.includes("admin")));
+  }));
+
+  app.post("/api/fee-structures", requireAuth(authService), requireTenant(authService), requireRole("admin", "accountant"), asyncHandler(async (req, res) => {
+    res.status(201).json(await financeService.createFeeStructure(
+      req.currentUser!, req.tenant!, feeStructureCreateSchema.parse(req.body),
+    ));
+  }));
+
+  app.put("/api/fee-structures/:id", requireAuth(authService), requireTenant(authService), requireRole("admin", "accountant"), asyncHandler(async (req, res) => {
+    res.json(await financeService.updateFeeStructure(
+      req.currentUser!, req.tenant!, z.string().uuid().parse(req.params.id), feeStructureUpdateSchema.parse(req.body),
+    ));
+  }));
+
+  app.delete("/api/fee-structures/:id", requireAuth(authService), requireTenant(authService), requireRole("admin"), asyncHandler(async (req, res) => {
+    res.json(await financeService.deactivateFeeStructure(
+      req.currentUser!, req.tenant!, z.string().uuid().parse(req.params.id),
+    ));
+  }));
+
+  app.get("/api/fees/balances", requireAuth(authService), requireTenant(authService), requireRole("admin", "accountant", "parent", "student"), asyncHandler(async (req, res) => {
+    res.json(await financeService.listBalances(req.currentUser!, req.tenant!, feeBalanceQuerySchema.parse(req.query)));
+  }));
+
+  app.post("/api/fees/pay", requireAuth(authService), requireTenant(authService), requireRole("admin", "accountant"), asyncHandler(async (req, res) => {
+    res.status(201).json(await financeService.recordFeePayment(req.currentUser!, req.tenant!, feePaymentSchema.parse(req.body)));
   }));
 
   for (const kind of ["parent", "student", "staff"] as const) {
@@ -299,7 +396,7 @@ function effectiveAccessContext(user: NonNullable<Express.Request["currentUser"]
 function registerSecureResourceRoutes(app: Express, authService: AuthService, appService: AppService, accessControl: AccessControlService) {
   const handle = (action: "create" | "update" | "delete") => asyncHandler(async (req, res) => {
     const config = getResourceConfig(req.params.resource);
-    if (!config || config.key === "users") throw new AppError(404, "Unknown resource");
+    if (!config || config.key === "users" || config.key === "feeStructures" || config.key === "subjects") throw new AppError(404, "Unknown resource");
     if (!rolesCan(req.tenant!.roles, config.module, action)) throw new AppError(403, "You do not have permission to perform this action");
     const payload = action === "delete" ? {} : resourcePayloadSchema.parse(req.body);
     const role = req.tenant!.roles.find((candidate) => config[action].includes(candidate));

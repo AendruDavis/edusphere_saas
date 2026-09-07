@@ -98,5 +98,5 @@ export function primarySchoolRole(roles: readonly SchoolRole[]): SchoolRole {
 export function canManageRole(actorRole: UserRole, targetRole: UserRole, action: "create" | "update" | "delete" = "update") {
   if (actorRole === "super_admin") return true;
   if (actorRole !== "admin" || targetRole === "super_admin") return false;
-  return action !== "delete" || targetRole !== "admin";
+  return action === "create" || action === "update" || action === "delete";
 }

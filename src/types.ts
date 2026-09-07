@@ -1,14 +1,18 @@
-import type { UserRole } from "../shared/permissions";
+import type { SchoolRole, UserRole } from "../shared/permissions";
+import type { LogoVariants, ReportSettings } from "../shared/reportSettings";
 
-export type { UserRole };
+export type { SchoolRole, UserRole };
 
 export interface User {
   id: string;
   name: string;
   email: string;
   role: UserRole;
-  password?: string;
+  roles?: SchoolRole[];
   photo?: string | null;
+  dept?: string;
+  mustChangePassword?: boolean;
+  passwordChangedAt?: string | null;
 }
 
 export interface SchoolMembership {
@@ -16,15 +20,19 @@ export interface SchoolMembership {
   schoolName: string;
   schoolSlug: string;
   role: UserRole;
+  roles: SchoolRole[];
 }
 
 export interface SchoolSettings {
   name: string;
   logo: string | null;
+  logoVariants?: LogoVariants;
+  brandingVersion?: number;
   level: "Primary" | "Secondary";
   classes: string[];
   currency?: string;
   academicYear?: string;
+  currentTerm?: string;
   address?: string;
   classFees?: { [key: string]: number };
   phone?: string;
@@ -41,6 +49,7 @@ export interface SchoolSettings {
   reportFooter?: string;
   stampWarning?: string;
   assessmentModel?: "competency_3" | "percentage_100";
+  reportSettings?: ReportSettings;
 }
 
 export interface Student {
@@ -248,6 +257,43 @@ export interface FeeStructure {
   academicYear: string;
   items: { name: string; amount: number }[];
   totalAmount: number;
+  dueDate?: string | null;
+  active?: boolean;
+}
+
+export interface Subject {
+  id: string;
+  name: string;
+  code?: string | null;
+  schoolType?: "Primary" | "Secondary" | null;
+  classLevel?: string | null;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface FeePeriod {
+  term: string;
+  year: string;
+}
+
+export interface FeeBalance extends FeePeriod {
+  schoolId: string;
+  studentId: string;
+  studentName: string;
+  reg: string;
+  class: string;
+  standardFee: number;
+  paidAmount: number;
+  outstandingAmount: number;
+  creditAmount: number;
+  status: "unconfigured" | "outstanding" | "partial" | "paid";
+}
+
+export interface AccountProvisioningResult {
+  user: User;
+  temporaryPassword: string;
+  mustChangePassword: true;
 }
 
 export interface Dormitory {

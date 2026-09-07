@@ -6,6 +6,23 @@ type ApiOptions = RequestInit & {
   json?: unknown;
 };
 
+export type ApiErrorDetails = {
+  code?: string;
+  fieldErrors?: Record<string, string[]>;
+  formErrors?: string[];
+};
+
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number, public readonly details?: ApiErrorDetails) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+export function apiFieldErrors(error: unknown) {
+  return error instanceof ApiError ? error.details?.fieldErrors ?? {} : {};
+}
+
 export type AuthSession = {
   accessToken: string;
   refreshToken?: string;
@@ -66,7 +83,10 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
       typeof payload === "object" && payload !== null && "error" in payload
         ? String((payload as { error: unknown }).error)
         : `Request failed with status ${response.status}`;
-    throw new Error(message);
+    const details = typeof payload === "object" && payload !== null && "details" in payload
+      ? (payload as { details?: ApiErrorDetails }).details
+      : undefined;
+    throw new ApiError(message, response.status, details);
   }
 
   return payload as T;

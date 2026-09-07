@@ -27,6 +27,7 @@ const Timetable = lazy(() => import("./pages/Timetable"));
 const Grades = lazy(() => import("./pages/Grades"));
 const Hostels = lazy(() => import("./pages/Hostels"));
 const Login = lazy(() => import("./pages/Login"));
+const ChangePassword = lazy(() => import("./pages/ChangePassword"));
 
 const protectedRoutes: Array<{ path: string; module: AppModule; component: React.LazyExoticComponent<React.ComponentType> }> = [
   { path: "/students", module: "students", component: Students },
@@ -80,6 +81,11 @@ function AppRoutes() {
             <Route path="/login" element={<Login />} />
             <Route path="/school/:schoolSlug/login" element={<Login />} />
             <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
+        ) : currentUser.mustChangePassword ? (
+          <Routes>
+            <Route path="/change-password" element={<ChangePassword />} />
+            <Route path="*" element={<Navigate to="/change-password" replace />} />
           </Routes>
         ) : (
           <Routes>
