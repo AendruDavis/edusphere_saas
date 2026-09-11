@@ -89,6 +89,8 @@ create unique index if not exists subjects_active_name_key
   on public.subjects ("schoolId", lower(trim(name)))
   where active = true;
 
+alter table public.subjects drop constraint if exists "subjects_schoolId_name_key";
+
 drop trigger if exists subjects_set_updated_at on public.subjects;
 create trigger subjects_set_updated_at
 before update on public.subjects
@@ -107,18 +109,18 @@ select
   st.name as "studentName",
   st.reg,
   st.class,
-  ss."currentTerm" as term,
-  ss."academicYear" as year,
   coalesce(fee.standard_fee, 0)::numeric(14,2) as "standardFee",
   coalesce(paid.total_paid, 0)::numeric(14,2) as "paidAmount",
   greatest(coalesce(fee.standard_fee, 0) - coalesce(paid.total_paid, 0), 0)::numeric(14,2) as "outstandingAmount",
-  greatest(coalesce(paid.total_paid, 0) - coalesce(fee.standard_fee, 0), 0)::numeric(14,2) as "creditAmount",
   case
     when coalesce(fee.standard_fee, 0) <= 0 then 'unconfigured'
     when coalesce(paid.total_paid, 0) >= coalesce(fee.standard_fee, 0) then 'paid'
     when coalesce(paid.total_paid, 0) > 0 then 'partial'
     else 'outstanding'
-  end as status
+  end as status,
+  ss."currentTerm" as term,
+  ss."academicYear" as year,
+  greatest(coalesce(paid.total_paid, 0) - coalesce(fee.standard_fee, 0), 0)::numeric(14,2) as "creditAmount"
 from public.students st
 join public.school_settings ss on ss."schoolId" = st."schoolId"
 left join lateral (

@@ -368,6 +368,7 @@ export class AuthService {
   async replaceSchoolRoles(id: string, rolesInput: SchoolRole[], schoolId: string, actorId: string, confirmPassword?: string) {
     const roles = normalizeSchoolRoles(rolesInput);
     return withTransaction(async (client) => {
+      await client.query(`select id from schools where id = $1 for update`, [schoolId]);
       const membership = await this.lockMembership(client, schoolId, id);
       const oldRoles = await this.membershipRoles(client, membership.id, membership.role);
       const adminChanged = oldRoles.includes("admin") !== roles.includes("admin");
@@ -419,7 +420,7 @@ export class AuthService {
       );
       await client.query(
         `insert into audit_logs ("schoolId", "actorId", action, entity, "entityId", "riskLevel", summary)
-         select sm."schoolId", $1, 'user.password_changed', 'users', $1, 'restricted', 'Changed account password'
+         select sm."schoolId", $1::uuid, 'user.password_changed', 'users', $1::text, 'restricted', 'Changed account password'
          from school_memberships sm where sm."userId" = $1 and sm.active = true`,
         [userId],
       );

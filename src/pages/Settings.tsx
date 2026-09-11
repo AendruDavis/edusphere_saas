@@ -582,6 +582,7 @@ export default function Settings() {
 
           {activeSection === "access" && (
             <div className="space-y-6">
+              <div className="flex justify-end"><button type="button" className="app-button-primary" onClick={() => { setEditingAccount(null); setAccountDialogOpen(true); }}><Plus className="h-4 w-4" /> Create account</button></div>
               <div className="app-panel space-y-5">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><h2 id="settings-access" className="text-lg font-semibold text-slate-950">Access control</h2><p className="mt-1 text-sm text-slate-500">School roles, linked identities, and teaching scopes.</p></div>{references && <span className={cn("app-badge self-start", references.authorizationMode === "enforce" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800")}>{references.authorizationMode === "enforce" ? "Enforced" : "Audit mode"}</span>}</div>
                 {accessLoading && !references ? <p className="py-8 text-center text-sm text-slate-500">Loading access controls...</p> : readiness && references ? (

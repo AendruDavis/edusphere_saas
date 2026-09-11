@@ -13,11 +13,13 @@ test("platform authority is not implicit school module access", () => {
   assert.equal(roleCan("super_admin", "students", "read"), false);
 });
 
-test("admin cannot create or remove privileged admin roles", () => {
+test("school admins manage school roles but cannot grant platform authority", () => {
   assert.equal(canManageRole("admin", "teacher", "create"), true);
   assert.equal(canManageRole("admin", "super_admin", "create"), false);
   assert.equal(canManageRole("admin", "super_admin", "update"), false);
-  assert.equal(canManageRole("admin", "admin", "delete"), false);
+  assert.equal(canManageRole("admin", "admin", "create"), true);
+  assert.equal(canManageRole("admin", "admin", "update"), true);
+  assert.equal(canManageRole("admin", "admin", "delete"), true);
 });
 
 test("module permissions keep sensitive features scoped", () => {

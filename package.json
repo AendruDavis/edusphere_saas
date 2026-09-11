@@ -17,10 +17,13 @@
     "create:db": "tsx server/scripts/createDatabase.ts",
     "migrate:db": "tsx server/scripts/migrate.ts",
     "check:access": "tsx server/scripts/checkAccessIntegrity.ts",
+    "check:config": "tsx server/scripts/checkConfigurationIntegrity.ts",
     "seed:admin": "tsx server/scripts/seedAdmin.ts",
     "jobs:schedule": "tsx server/scripts/scheduleReminders.ts",
     "jobs:notifications": "tsx server/scripts/processNotificationJobs.ts",
     "test": "tsx --test server/domain/*.test.ts",
+    "test:config": "tsx --test server/integration/configuration.test.ts",
+    "test:smoke": "playwright test --config playwright.smoke.config.ts",
     "test:responsive": "playwright test tests/responsive.spec.ts"
   },
   "dependencies": {

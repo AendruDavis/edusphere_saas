@@ -31,6 +31,8 @@ export function ResponsiveDialog({
   const titleId = React.useId();
   const descriptionId = React.useId();
   const dialogRef = React.useRef<HTMLDivElement>(null);
+  const onCloseRef = React.useRef(onClose);
+  React.useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -40,15 +42,15 @@ export function ResponsiveDialog({
 
     const dialog = dialogRef.current;
     const firstFocusable = dialog?.querySelector<HTMLElement>(focusableSelector);
-    window.setTimeout(() => (firstFocusable || dialog)?.focus(), 0);
+    const focusTimer = window.setTimeout(() => (firstFocusable || dialog)?.focus(), 0);
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab" || !dialog) return;
-      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector)) as HTMLElement[];
+      const focusable = (Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector)) as HTMLElement[]).filter(element => element.getClientRects().length > 0);
       if (focusable.length === 0) {
         event.preventDefault();
         dialog.focus();
@@ -67,11 +69,12 @@ export function ResponsiveDialog({
 
     document.addEventListener("keydown", onKeyDown);
     return () => {
+      window.clearTimeout(focusTimer);
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", onKeyDown);
       previousActiveElement?.focus();
     };
-  }, [onClose, open]);
+  }, [open]);
 
   if (!open) return null;
 

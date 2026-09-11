@@ -22,5 +22,7 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": ["src/**/*", "server/**/*", "shared/**/*", "tests/**/*", "*.ts", "*.cjs"],
+  "exclude": ["node_modules", "build", "dist", "public/uploads", "backups", "test-results", "playwright-report"]
 }

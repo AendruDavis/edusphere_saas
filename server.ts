@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { registerBackendRoutes } from "./server/routes";
+import { getUploadRoot } from "./server/infrastructure/storageService";
 
 dotenv.config();
 
@@ -21,7 +22,7 @@ async function startServer() {
 
   const app = express();
   const port = Number(process.env.PORT || 3000);
-  const uploadsPath = path.join(projectRoot, "public", "uploads");
+  const uploadsPath = getUploadRoot();
 
   app.disable("x-powered-by");
   app.use((_req, res, next) => {

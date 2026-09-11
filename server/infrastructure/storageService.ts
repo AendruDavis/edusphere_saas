@@ -6,7 +6,9 @@ import type { Metadata } from "sharp";
 import type { LogoVariants } from "../../shared/reportSettings";
 import { AppError } from "../domain/errors";
 
-const UPLOAD_ROOT = path.join(process.cwd(), "public", "uploads");
+export function getUploadRoot() {
+  return path.resolve(process.env.UPLOAD_ROOT || path.join(process.cwd(), "public", "uploads"));
+}
 const ALLOWED_FORMATS = new Set(["jpeg", "png", "webp"]);
 
 type ParsedDataUrl = {
@@ -51,7 +53,7 @@ export function sanitizeUploadFolder(folder: string | undefined) {
 }
 
 function uploadPath(...parts: string[]) {
-  const root = path.resolve(UPLOAD_ROOT);
+  const root = getUploadRoot();
   const candidate = path.resolve(root, ...parts);
   if (candidate !== root && !candidate.startsWith(`${root}${path.sep}`)) {
     throw new AppError(400, "Invalid upload path");

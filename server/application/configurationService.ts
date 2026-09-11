@@ -151,7 +151,7 @@ export class ConfigurationService {
           input.bankAccount || null,
           input.payCode || null,
           input.reportFooter || null,
-          input.stampWarning || null,
+          input.stampWarning ?? "",
           input.assessmentModel,
           JSON.stringify(reportSettings),
         ],
@@ -161,7 +161,7 @@ export class ConfigurationService {
       await client.query(
         `insert into audit_logs (
            "schoolId", "actorId", action, entity, "entityId", "riskLevel", summary, metadata
-         ) values ($1, $2, 'settings.school_updated', 'school_settings', $1, 'sensitive', $3, $4::jsonb)`,
+         ) values ($1::uuid, $2, 'settings.school_updated', 'school_settings', $1::text, 'sensitive', $3, $4::jsonb)`,
         [
           tenant.schoolId,
           actor.id,

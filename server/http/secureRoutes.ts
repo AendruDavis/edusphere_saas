@@ -2,7 +2,6 @@ import type { Express } from "express";
 import { z } from "zod";
 import {
   MODULE_PERMISSIONS,
-  SCHOOL_ROLES,
   rolesCan,
   type AppModule,
   type PermissionAction,
@@ -39,26 +38,10 @@ import {
   subjectUpdateSchema,
 } from "./configurationSchemas";
 
-const schoolRoleSchema = z.enum(SCHOOL_ROLES);
 const loginSchema = z.object({
   email: z.string().trim().email(),
   pass: z.string().min(1).max(128),
   schoolSlug: z.string().trim().min(2).max(100).optional(),
-});
-const userFieldsSchema = z.object({
-  name: z.string().trim().min(1).max(100),
-  email: z.string().trim().email().max(150),
-  password: z.string().min(10).max(128),
-  role: schoolRoleSchema.optional(),
-  roles: z.array(schoolRoleSchema).min(1).max(SCHOOL_ROLES.length).optional(),
-  photo: z.string().nullable().optional(),
-  dept: z.string().trim().max(100).optional(),
-});
-const userCreateSchema = userFieldsSchema.refine((value) => Boolean(value.role || value.roles?.length), {
-  message: "At least one school role is required",
-});
-const userUpdateSchema = userFieldsSchema.omit({ password: true }).partial().extend({
-  password: z.string().min(10).max(128).optional(),
 });
 const reportPeriodSchema = z.object({
   term: z.string().trim().min(1).max(50),
@@ -72,45 +55,6 @@ const reportCommentsSchema = reportPeriodSchema.extend({
 });
 const reportRevisionSchema = reportCommentsSchema.extend({
   reason: z.string().trim().min(10).max(500),
-});
-const reportSettingsSchema = z.object({
-  preset: z.enum(REPORT_TEMPLATE_PRESETS),
-  title: z.string().trim().min(3).max(120),
-  showLogo: z.boolean(),
-  showStudentPhoto: z.boolean(),
-  showPosition: z.boolean(),
-  showAttendance: z.boolean(),
-  showFees: z.boolean(),
-  showHealth: z.boolean(),
-  showLibrary: z.boolean(),
-  classTeacherLabel: z.string().trim().min(2).max(60),
-  headTeacherLabel: z.string().trim().min(2).max(60),
-});
-const gradeBandSchema = z.object({ min: z.number().min(0).max(100), grade: z.string().max(20), comment: z.string().max(120) });
-const schoolSettingsSchema = z.object({
-  name: z.string().trim().min(2).max(150),
-  logo: z.string().nullable(),
-  level: z.enum(["Primary", "Secondary"]),
-  classes: z.array(z.string().trim().min(1).max(60)).max(100),
-  currency: z.string().trim().min(1).max(10).optional(),
-  academicYear: z.string().trim().min(1).max(30).optional(),
-  address: z.string().trim().max(300).optional(),
-  phone: z.string().trim().max(60).optional(),
-  email: z.string().trim().email().max(150).optional().or(z.literal("")),
-  classFees: z.record(z.string(), z.number().min(0).max(1_000_000_000)).optional(),
-  gradingScale: z.array(gradeBandSchema).max(30).optional(),
-  motto: z.string().trim().max(200).optional(),
-  deoCode: z.string().trim().max(80).optional(),
-  tin: z.string().trim().max(80).optional(),
-  primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
-  secondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
-  bankName: z.string().trim().max(120).optional(),
-  bankAccount: z.string().trim().max(120).optional(),
-  payCode: z.string().trim().max(80).optional(),
-  reportFooter: z.string().trim().max(300).optional(),
-  stampWarning: z.string().trim().max(200).optional(),
-  assessmentModel: z.enum(["competency_3", "percentage_100"]).optional(),
-  reportSettings: reportSettingsSchema.optional(),
 });
 const dataUrlSchema = z.object({ dataUrl: z.string().startsWith("data:").max(5_000_000) });
 const resourcePayloadSchema = z.record(z.string(), z.unknown());
