@@ -324,7 +324,7 @@ export default function Settings() {
       setPendingLogo(dataUrl);
       setLocalSettings((settings) => ({ ...settings, logo: dataUrl }));
     } catch {
-      toast.error("Unable to read the selected logo.");
+      toast.error("Unable to read selected logo.");
     }
   };
 
